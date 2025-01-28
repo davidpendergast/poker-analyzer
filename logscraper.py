@@ -265,6 +265,10 @@ if __name__ == "__main__":
 
     custom_filters = {
         "All Hands": filters.Filter(),
+        "AA": filters.HeroCardFilter("AA"),
+        "KK": filters.HeroCardFilter("KK"),
+        "AK": filters.HeroCardFilter("AK"),
+        "QQ": filters.HeroCardFilter("QQ"),
         "Early Position": filters.HeroAtSpecificPosition(actions.EARLY_POS),
         "Mid Position": filters.HeroAtSpecificPosition(actions.MID_POS),
         "Late Position": filters.HeroAtSpecificPosition(actions.LATE_POS),

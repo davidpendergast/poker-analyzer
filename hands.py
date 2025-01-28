@@ -388,14 +388,15 @@ class HandGroup(collections.abc.Sequence):
             else:
                 return bbs[len(bbs) // 2]
 
-    def win_pcnt(self):
+    def win_pcnt(self, after_vpip=True):
         wins = 0
         losses = 0
         for h in self.hands:
-            if h.did_hero_win():
-                wins += 1
-            else:
-                losses += 1
+            if not after_vpip or h.did_hero_vpip(street=actions.ANY):
+                if h.did_hero_win():
+                    wins += 1
+                else:
+                    losses += 1
         if wins + losses == 0:
             return 0
         else:

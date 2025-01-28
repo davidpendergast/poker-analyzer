@@ -25,7 +25,7 @@ def unpack_street(street):
         return (street,)
 
 
-# Action Types
+# Pure Action Types
 BB = 'bb'  # Player posts their big blind
 SB = 'sb'  # Player posts their small blind
 ANTE = 'ante'  # Player posts their ante
@@ -37,6 +37,12 @@ RAISE = 'raise' # Player raises after another has opened.
 CHECK = 'check'
 FOLD = 'fold'
 
+# Qualitative Action Types
+LIMP = 'limp'
+CALL_TO_CLOSE_ACTION = 'call_to_close'
+CALL_WITH_ACTORS_BEHIND = 'call_without_close'
+THREE_BET = 'three_bet'
+FOUR_BET = 'four_bet'
 
 # Positions
 BTN = "BTN"
