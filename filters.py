@@ -60,7 +60,7 @@ class HeroVPIP(Filter):
         return False
 
 
-class HeroAtPosition(Filter):
+class HeroAtSpecificPosition(Filter):
 
     def __init__(self, pos):
         super().__init__()
@@ -74,6 +74,48 @@ class HeroAtPosition(Filter):
                     if hands.Player.names_eq(hand.hero_id, p):
                         return True
         return False
+
+
+class HeroInPosition(Filter):
+
+    def __init__(self, street=actions.FLOP):
+        super().__init__()
+        self.street = street
+
+    def test(self, hand: 'hands.Hand') -> bool:
+        ordered_players = hand.get_position_to_player_mapping()[actions.ANY]
+        active_players = hand.players_involved_at_street(self.street)
+
+        found_hero = False
+        for p in ordered_players:
+            if p in active_players:
+                if hands.Player.names_eq(p, hand.hero_id):
+                    found_hero = True
+                elif found_hero:
+                    return False  # there's an active player after the hero
+
+        return found_hero
+
+
+class HeroOutOfPosition(Filter):
+
+    def __init__(self, street=actions.FLOP):
+        super().__init__()
+        self.street = street
+
+    def test(self, hand: 'hands.Hand') -> bool:
+        ordered_players = hand.get_position_to_player_mapping()[actions.ANY]
+        active_players = hand.players_involved_at_street(self.street)
+
+        found_hero = False
+        for p in reversed(ordered_players):
+            if p in active_players:
+                if hands.Player.names_eq(p, hand.hero_id):
+                    found_hero = True
+                elif found_hero:
+                    return False  # there's an active player before the hero
+
+        return found_hero
 
 
 class Multiway(Filter):

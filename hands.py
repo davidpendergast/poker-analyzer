@@ -65,6 +65,9 @@ class Hand:
                 return False
         return False
 
+    def did_hero_win(self):
+        return self.get_hero().net() > 0
+
     def hero_got_to_street(self, street):
         for n in self.players_involved_at_street(street):
             if Player.names_eq(n, self.hero_id):
@@ -141,6 +144,8 @@ class Hand:
 
         # last player to act is always the button (note they may be the BB too)
         res[actions.BTN] = [seen_players[-1]]
+
+        res[actions.ANY] = list(seen_players)  # ordered list of all players
 
         # first player to act after blinds is UTG
         if len(seen_players) >= 4:
@@ -221,9 +226,6 @@ class Hand:
                 clean_res[k] = v_clean
 
         return clean_res
-
-
-
 
     def get_bb_cost(self):
         return self.configs['bb_cost']
@@ -386,6 +388,33 @@ class HandGroup(collections.abc.Sequence):
             else:
                 return bbs[len(bbs) // 2]
 
+    def win_pcnt(self):
+        wins = 0
+        losses = 0
+        for h in self.hands:
+            if h.did_hero_win():
+                wins += 1
+            else:
+                losses += 1
+        if wins + losses == 0:
+            return 0
+        else:
+            return wins / (wins + losses)
+
+    def win_at_showdown_pcnt(self):
+        wins = 0
+        losses = 0
+        for h in self.hands:
+            if h.hero_got_to_street(actions.SHOWDOWN):
+                if h.did_hero_win():
+                    wins += 1
+                else:
+                    losses += 1
+        if wins + losses == 0:
+            return 0
+        else:
+            return wins / (wins + losses)
+
     def session_count(self):
         sessions = set()
         for h in self.hands:
@@ -397,7 +426,12 @@ class HandGroup(collections.abc.Sequence):
         desc = f"{self.desc}: "
         avg_bbs = f"{self.avg_bbs_per_play():.1f}bb"
         total = f"{locale.currency(self.net_gain())}"
-        return f"{desc:<32}{avg_bbs:<12}{total:<12}in {len(self)} hand(s) [VPIP={self.vpip_pcnt()*100.0:.2f}%]"
+        in_x_hands = f"in {len(self)} hand(s)"
+        vpip_pcnt = f"{min(99.9, self.vpip_pcnt() * 100):.1f}%"
+        win_pcnt = f"{min(99.9, self.win_pcnt() * 100):.1f}%"
+        win_at_sd_pcnt = f"{min(99.9, self.win_at_showdown_pcnt() * 100):.1f}%"
+        return (f"{desc:<32}{avg_bbs:<12}{total:<12}{in_x_hands:<16}"
+                f"[VPIP={vpip_pcnt:>5}, WIN={win_pcnt:>5}, WaSD={win_at_sd_pcnt:>5}]")
 
     def get_hole_card_freqs(self):
         res = {}

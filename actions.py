@@ -52,6 +52,7 @@ LATE_POS = "LP"   #
 MID_POS = "MP"    #
 EARLY_POS = "EP"  #
 BLINDS = "BLINDS" #
+ANY = "any"       # note: same var as in 'Streets'
 
 class Action:
 
