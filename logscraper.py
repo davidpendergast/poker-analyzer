@@ -262,34 +262,42 @@ if __name__ == "__main__":
 
     custom_filters = {
         "All Hands": filters.Filter(),
-        "Premiums (JJ+, AQ+)": filters.HeroCardFilter("JJ+, AQ+"),
-        "Mid Pairs (TT-77)": filters.HeroCardFilter("77-TT"),
-        "Low Pairs (66-22)": filters.HeroCardFilter("22-66"),
-
-        "Broadways (KQ KJ QJ)": filters.HeroCardFilter("KQ, KJ, QJ"),
-
-        "High S Connectors (AK-JTs)": filters.HeroCardFilter("AK-JTs"),
-        "Mid S Connectors (T9-76s)": filters.HeroCardFilter("T9-76s"),
-        "Low S Connectors (32-65s)": filters.HeroCardFilter("32-65s"),
-
-        "High S Gappers (AQ-J9s)": filters.HeroCardFilter("AQ-J9s"),
-
-        "Mid oS Ax (AJ-A6o)": filters.HeroCardFilter("AJ-A6o"),
-        "Mid S Ax (AJ-A6s)": filters.HeroCardFilter("AJ-A6s"),
-        "Low oS Ax (A5-A2o)": filters.HeroCardFilter("A5-A2o"),
-        "Low S Ax (A5-A2s)": filters.HeroCardFilter("A5-A2s"),
-
-        "Junky oS Kx (KT-K2o)": filters.HeroCardFilter("KT-K2o"),
-        "Suited Kx (KT-K2s)": filters.HeroCardFilter("KT-K2s"),
-        "Junky oS Qx (QT-Q2o)": filters.HeroCardFilter("QT-Q2o"),
-        "Suited Qx (QT-Q2s)": filters.HeroCardFilter("QT-Q2s"),
-
-        "2-way Flops": filters.HeroSawStreet(actions.FLOP) & filters.Multiway(actions.FLOP, at_most=2),
-        "3-way Flops": filters.HeroSawStreet(actions.FLOP) & filters.Multiway(actions.FLOP, at_least=3, at_most=3),
-        "4-way+ Flops": filters.HeroSawStreet(actions.FLOP) & filters.Multiway(actions.FLOP, at_least=4),
-
-        "Gets to Showdown": filters.HeroSawStreet(actions.SHOWDOWN),
-        "Doesn't get to Showdown": filters.HeroVPIP() & ~filters.HeroSawStreet(actions.SHOWDOWN)
+        "Early Position": filters.HeroAtPosition(actions.EARLY_POS),
+        "Mid Position": filters.HeroAtPosition(actions.MID_POS),
+        "Late Position": filters.HeroAtPosition(actions.LATE_POS),
+        "UTG": filters.HeroAtPosition(actions.UTG),
+        "BTN": filters.HeroAtPosition(actions.BTN),
+        "as BB": filters.HeroAtPosition(actions.BB),
+        "as SB": filters.HeroAtPosition(actions.SB),
+        "from Blinds": filters.HeroAtPosition(actions.BLINDS)
+        # "Premiums (JJ+, AQ+)": filters.HeroCardFilter("JJ+, AQ+"),
+        # "Mid Pairs (TT-77)": filters.HeroCardFilter("77-TT"),
+        # "Low Pairs (66-22)": filters.HeroCardFilter("22-66"),
+        #
+        # "Broadways (KQ KJ QJ)": filters.HeroCardFilter("KQ, KJ, QJ"),
+        #
+        # "High S Connectors (AK-JTs)": filters.HeroCardFilter("AK-JTs"),
+        # "Mid S Connectors (T9-76s)": filters.HeroCardFilter("T9-76s"),
+        # "Low S Connectors (32-65s)": filters.HeroCardFilter("32-65s"),
+        #
+        # "High S Gappers (AQ-J9s)": filters.HeroCardFilter("AQ-J9s"),
+        #
+        # "Mid oS Ax (AJ-A6o)": filters.HeroCardFilter("AJ-A6o"),
+        # "Mid S Ax (AJ-A6s)": filters.HeroCardFilter("AJ-A6s"),
+        # "Low oS Ax (A5-A2o)": filters.HeroCardFilter("A5-A2o"),
+        # "Low S Ax (A5-A2s)": filters.HeroCardFilter("A5-A2s"),
+        #
+        # "Junky oS Kx (KT-K2o)": filters.HeroCardFilter("KT-K2o"),
+        # "Suited Kx (KT-K2s)": filters.HeroCardFilter("KT-K2s"),
+        # "Junky oS Qx (QT-Q2o)": filters.HeroCardFilter("QT-Q2o"),
+        # "Suited Qx (QT-Q2s)": filters.HeroCardFilter("QT-Q2s"),
+        #
+        # "2-way Flops": filters.HeroSawStreet(actions.FLOP) & filters.Multiway(actions.FLOP, at_most=2),
+        # "3-way Flops": filters.HeroSawStreet(actions.FLOP) & filters.Multiway(actions.FLOP, at_least=3, at_most=3),
+        # "4-way+ Flops": filters.HeroSawStreet(actions.FLOP) & filters.Multiway(actions.FLOP, at_least=4),
+        #
+        # "Gets to Showdown": filters.HeroSawStreet(actions.SHOWDOWN),
+        # "Doesn't get to Showdown": filters.HeroVPIP(street=actions.ANY) & ~filters.HeroSawStreet(actions.SHOWDOWN)
     }
 
     custom_results = [all_hands.filter(custom_filters[f], desc=f) for f in custom_filters]

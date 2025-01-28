@@ -38,22 +38,27 @@ class Hand:
                 players_str.append(p.summary_str())
         return res + str(players_str)
 
-    def all_actions(self, player_id=None):
-        for a in self.pre_flop_actions:
-            if player_id is None or Player.names_eq(a.player_id, player_id):
-                yield a
-        for a in self.flop_actions:
-            if player_id is None or Player.names_eq(a.player_id, player_id):
-                yield a
-        for a in self.turn_actions:
-            if player_id is None or Player.names_eq(a.player_id, player_id):
-                yield a
-        for a in self.river_actions:
-            if player_id is None or Player.names_eq(a.player_id, player_id):
-                yield a
+    def all_actions(self, player_id=None, street=actions.ANY):
+        streets = actions.unpack_street(street)
+        if actions.PRE_FLOP in streets:
+            for a in self.pre_flop_actions:
+                if player_id is None or Player.names_eq(a.player_id, player_id):
+                    yield a
+        if actions.FLOP in streets:
+            for a in self.flop_actions:
+                if player_id is None or Player.names_eq(a.player_id, player_id):
+                    yield a
+        if actions.TURN in streets:
+            for a in self.turn_actions:
+                if player_id is None or Player.names_eq(a.player_id, player_id):
+                    yield a
+        if actions.RIVER in streets:
+            for a in self.river_actions:
+                if player_id is None or Player.names_eq(a.player_id, player_id):
+                    yield a
 
-    def did_hero_vpip(self):
-        for a in self.all_actions(player_id=self.hero_id):
+    def did_hero_vpip(self, street=actions.PRE_FLOP):
+        for a in self.all_actions(player_id=self.hero_id, street=street):
             if a.is_vpip():
                 return True
             if a.action_type == actions.FOLD:
@@ -73,6 +78,7 @@ class Hand:
         return len(self.players_involved_at_street(street)) > 2
 
     def players_involved_at_street(self, street) -> typing.Set[str]:
+        streets = actions.unpack_street(street)
         in_hand_pre = set()
         in_hand = set()
         for a in self.pre_flop_actions:
@@ -82,27 +88,142 @@ class Hand:
                 in_hand.add(a.player_id)
             if a.action_type == actions.FOLD:
                 in_hand.remove(a.player_id)
-        if street == actions.PRE_FLOP:
+        if actions.PRE_FLOP in streets:
             return in_hand_pre
-        elif street == actions.FLOP:
+        elif actions.FLOP in streets:
             return in_hand if len(in_hand) > 1 else set()
 
         for a in self.flop_actions:
             if a.action_type == actions.FOLD:
                 in_hand.remove(a.player_id)
-        if street == actions.TURN:
+        if actions.TURN in streets:
             return in_hand if len(in_hand) > 1 else set()
 
         for a in self.turn_actions:
             if a.action_type == actions.FOLD:
                 in_hand.remove(a.player_id)
-        if street == actions.RIVER:
+        if actions.RIVER in streets:
             return in_hand if len(in_hand) > 1 else set()
 
         for a in self.river_actions:
             if a.action_type == actions.FOLD:
                 in_hand.remove(a.player_id)
-        return in_hand if len(in_hand) > 1 else set()  # showdown
+        if actions.SHOWDOWN in streets:
+            return in_hand if len(in_hand) > 1 else set()  # showdown
+        else:
+            return set()
+
+    def get_position_to_player_mapping(self) -> typing.Dict[str, typing.List[str]]:
+        # semi-complicated due to dead/inactive players and arbitrary
+        # groupings for EP, MP, LP at various table-sizes.
+        res = {}
+        seen_players = []
+
+        for a in self.pre_flop_actions:
+            if len(seen_players) > 0 and a.player_id == seen_players[0]:
+                break  # we've looped
+            if a.action_type == actions.SB:
+                res[actions.SB] = [a.player_id]
+            elif a.action_type == actions.BB:
+                res[actions.BB] = [a.player_id]
+            seen_players.append(a.player_id)
+
+        # placeholders for dead SB and BB (note all Nones are removed at the end)
+        if actions.SB not in res:
+            res[actions.SB] = [None]
+            seen_players.insert(0, None)
+        if actions.BB not in res:
+            res[actions.BB] = [None]
+            seen_players.insert(1, None)
+
+        # blinds are always the blinds
+        res[actions.BLINDS] = [res[actions.SB][0], res[actions.BB][0]]
+
+        # last player to act is always the button (note they may be the BB too)
+        res[actions.BTN] = [seen_players[-1]]
+
+        # first player to act after blinds is UTG
+        if len(seen_players) >= 4:
+            res[actions.UTG] = [seen_players[2]]
+
+        # last player to act before button is CO
+        if len(seen_players) >= 5:
+            res[actions.CO] = [seen_players[3]]
+
+        # 2nd last player to act before button is HJ
+        if len(seen_players) >= 6:
+            res[actions.HJ] = [seen_players[3]]
+
+        # 3rd last player to act before button is LJ
+        if len(seen_players) >= 7:
+            res[actions.LJ] = [seen_players[3]]
+
+        #    [EP][MP][LP]
+        # 2: [SB][  ][BTN]
+        # 3: [SB][BB][BTN]
+        # 4: [SB BB][UTG][BTN]
+        # 5: SB BB [UTG] [CO] [BTN]
+        # 6: SB BB [UTG] [HJ] [CO BTN]
+        # 7: SB BB [UTG] [LJ HJ] [CO BTN]
+        # 8: SB BB [UTG UTG+] [LJ HJ] [CO BTN]
+
+        # remaining players are UTG+
+        if len(seen_players) >= 8:
+            res[actions.UTG_PLUS] = seen_players[3:len(seen_players)-4]
+
+        # god i wish there was an easier way to do this
+        if len(seen_players) == 2:
+            # 2: [SB][  ][BTN]
+            sb, btn = seen_players
+            res[actions.EARLY_POS] = [sb]
+            res[actions.LATE_POS] = [btn]
+        elif len(seen_players) == 3:
+            # 3: [SB][BB][BTN]
+            sb, bb, btn = seen_players
+            res[actions.EARLY_POS] = [sb]
+            res[actions.MID_POS] = [bb]
+            res[actions.LATE_POS] = [btn]
+        elif len(seen_players) == 4:
+            # 4: [SB BB][UTG][BTN]
+            sb, bb, utg, btn = seen_players
+            res[actions.EARLY_POS] = [sb, bb]
+            res[actions.MID_POS] = [utg]
+            res[actions.LATE_POS] = [btn]
+        elif len(seen_players) == 5:
+            # 5: SB BB [UTG] [CO] [BTN]
+            sb, bb, utg, co, btn = seen_players
+            res[actions.EARLY_POS] = [utg]
+            res[actions.MID_POS] = [co]
+            res[actions.LATE_POS] = [btn]
+        elif len(seen_players) == 6:
+            # 6: SB BB [UTG] [HJ] [CO BTN]
+            sb, bb, utg, hj, co, btn = seen_players
+            res[actions.EARLY_POS] = [utg]
+            res[actions.MID_POS] = [hj]
+            res[actions.LATE_POS] = [co, btn]
+        elif len(seen_players) == 7:
+            # 7: SB BB [UTG] [LJ HJ] [CO BTN]
+            sb, bb, utg, lj, hj, co, btn = seen_players
+            res[actions.EARLY_POS] = [utg]
+            res[actions.MID_POS] = [lj, hj]
+            res[actions.LATE_POS] = [co, btn]
+        elif len(seen_players) >= 8:
+            # 8: SB BB [UTG UTG+] [LJ HJ] [CO BTN]
+            res[actions.EARLY_POS] = res[actions.UTG] + res[actions.UTG_PLUS]
+            res[actions.MID_POS] = res[actions.LJ] + res[actions.HJ]
+            res[actions.LATE_POS] = res[actions.CO] + res[actions.BTN]
+
+        # finally, remove all Nones
+        clean_res = {}
+        for k, v in res.items():
+            v_clean = [pl for pl in v if pl is not None]
+            if len(v_clean) > 0:
+                clean_res[k] = v_clean
+
+        return clean_res
+
+
+
 
     def get_bb_cost(self):
         return self.configs['bb_cost']

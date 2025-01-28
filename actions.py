@@ -1,10 +1,28 @@
+import typing
 
 # Streets
-PRE_FLOP="pre-flop"
-FLOP="flop"
-TURN="turn"
-RIVER="river"
-SHOWDOWN="showdown"
+PRE_FLOP = "pre-flop"
+FLOP = "flop"
+TURN = "turn"
+RIVER = "river"
+SHOWDOWN = "showdown"
+
+ANY = "any"
+POST_FLOP = "post-flop"
+BEFORE_SHOWDOWN = "pre-showdown"
+
+
+def unpack_street(street):
+    if isinstance(street, tuple):
+        return street
+    elif street == ANY:
+        return PRE_FLOP, FLOP, TURN, RIVER, SHOWDOWN
+    elif street == POST_FLOP:
+        return FLOP, TURN, RIVER, SHOWDOWN
+    elif street == BEFORE_SHOWDOWN:
+        return PRE_FLOP, FLOP, TURN, RIVER
+    else:
+        return (street,)
 
 
 # Action Types
@@ -18,6 +36,22 @@ RAISE = 'raise' # Player raises after another has opened.
 
 CHECK = 'check'
 FOLD = 'fold'
+
+
+# Positions
+BTN = "BTN"
+CO = "CO"
+HJ = "HJ"
+LJ = "LJ"
+UTG_PLUS = "UTG+"
+UTG = "UTG"
+BB = 'bb'    # note: same var as in 'Action Types'
+SB = 'sb'    # note: same var as in 'Action Types'
+
+LATE_POS = "LP"   #
+MID_POS = "MP"    #
+EARLY_POS = "EP"  #
+BLINDS = "BLINDS" #
 
 class Action:
 

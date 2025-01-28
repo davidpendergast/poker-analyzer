@@ -10,6 +10,51 @@ BROADWAYS="KJ, KQ, QJ"
 SUITED_CONNECTORS = "32s-AKs"
 SUITED_GAPPERS = "42s-AQs"
 
+class HandTypes:
+    # Made Hands
+    STRAIGHT_FLUSH = "Straight Flush"
+    QUADS = "Quads"
+    FULL_HOUSE = "Full House"
+    FLUSH = "Flush"
+    STRAIGHT = "Straight"
+    TRIPS = "Trips"
+    TWO_PAIR = "Two Pair"
+    PAIR = "Pair"
+    HIGH_CARD = "High Card"
+
+    # Draws
+    FLUSH_DRAW = "Flush Draw"
+    RR_FLUSH_DRAW = "RR_FLUSH_DRAW"
+    OESD = "Open Ended Straight Draw"
+    GSSD = "Gut Shot Straight Draw"
+
+    # Qualitative Hands
+    ONE_OVERCARD = "Overcard"
+    TWO_OVERCARDS = "Two Overcards"
+    SET = "Set"
+    WEAK_TRIPS = "Weak Trips"
+    OVERPAIR = "Overpair"
+    TOP_PAIR = "Top Pair"
+    MIDDLE_POCKET_PAIR = "Middle Pocket Pair"
+    MIDDLE_PAIR = "Middle Pair"
+    BOTTOM_PAIR = "Bottom Pair"
+    UNDERPAIR = "Underpair"
+    NUTS = "The Nuts"
+
+class BoardTypes:
+    MONOCHROME = "Monochrome"
+    TWO_OF_A_SUIT = "Two of a Suit"
+    THREE_OF_A_SUIT = "Three of a Suit"
+    FOUR_OF_A_SUIT = "Four of a Suit"
+    FIVE_OF_A_SUIT = "Five of a Suit"
+
+    UNPAIRED = "Unpaired"
+    PAIRED = "Paired"
+    TRIPLED = "Tripled"
+    DOUBLE_PAIRED = "Double Paired"
+    THREE_CONNECTED = "Three Connected"
+    FOUR_CONNECTED = "Four Connected"
+
 def to_card_code(cards) -> str:
     """
     (Ad, Kd) -> AKs

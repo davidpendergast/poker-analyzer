@@ -49,11 +49,31 @@ class HeroSawStreet(Filter):
 
 class HeroVPIP(Filter):
 
-    def __init__(self):
+    def __init__(self, street=actions.PRE_FLOP):
         super().__init__()
+        self.street = street
 
     def test(self, hand: 'hands.Hand') -> bool:
-        return hand.did_hero_vpip()
+        for a in hand.all_actions(player_id=hand.hero_id, street=self.street):
+            if a.is_vpip():
+                return True
+        return False
+
+
+class HeroAtPosition(Filter):
+
+    def __init__(self, pos):
+        super().__init__()
+        self.pos = pos if isinstance(pos, tuple) else (pos,)
+
+    def test(self, hand: 'hands.Hand') -> bool:
+        pp = hand.get_position_to_player_mapping()
+        for pos in self.pos:
+            if pos in pp:
+                for p in pp[pos]:
+                    if hands.Player.names_eq(hand.hero_id, p):
+                        return True
+        return False
 
 
 class Multiway(Filter):
