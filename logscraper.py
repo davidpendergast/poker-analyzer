@@ -310,7 +310,7 @@ if __name__ == "__main__":
     }
 
     custom_results = [all_hands.filter(custom_filters[f], desc=f) for f in custom_filters]
-    custom_results.sort(key=lambda x: x.avg_gain_per_play(), reverse=True)
+    custom_results.sort(key=lambda x: x.avg_bbs_per_play(), reverse=True)
 
     for res in custom_results:
         print(res.summary())
