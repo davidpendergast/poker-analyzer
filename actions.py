@@ -72,8 +72,17 @@ class Action:
     def is_vpip(self):
         return self.action_type in (CALL, OPEN, RAISE)
 
+    def is_aggro(self):
+        return self.action_type in (OPEN, RAISE)
+
+    def is_passive(self):
+        return self.action_type in (CHECK, CALL)
+
     def is_fold(self):
         return self.action_type == FOLD
 
     def is_all_in(self):
         return self.all_in
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self.player_id}, {self.amount}, {self.action_type}, {self.street}, {self.all_in=})"

@@ -31,14 +31,35 @@ class Hand:
                 and self.hero_id == other.hero_id)
 
     def __str__(self):
-        res = f"Hand #{self.hand_idx}"
-        players_str = []
-        for p in self.players:
-            if p.net() != 0:
-                players_str.append(p.summary_str())
-        return res + str(players_str)
+        net = locale.currency(self.get_hero().net())
+        cards = "".join(self.get_hero().cards)
 
-    def all_actions(self, player_id=None, street=actions.ANY):
+        preflop_acts = self.get_action_seq_string(street=actions.PRE_FLOP)
+        res = f"Hand #{self.hand_idx:<3} {net:<8} {cards} | {preflop_acts}"
+        if res.endswith("F"):
+            return res
+
+        flop_acts = self.get_action_seq_string(street=actions.FLOP)
+        if len(flop_acts) > 0:
+            res = f"{res} | {self.board[0:3]} {flop_acts}"
+        if res.endswith("F"):
+            return res
+
+        turn_acts = self.get_action_seq_string(street=actions.TURN)
+        if len(turn_acts) > 0:
+            res = f"{res} | {self.board[3:4]} {turn_acts}"
+        if res.endswith("F"):
+            return res
+
+        river_acts = self.get_action_seq_string(street=actions.RIVER)
+        if len(river_acts) > 0:
+            res = f"{res} | {self.board[4:5]} {river_acts}"
+        if res.endswith("F"):
+            return res
+
+        return res
+
+    def all_actions(self, player_id=None, street=actions.ANY) -> typing.Generator[actions.Action, None, None]:
         streets = actions.unpack_street(street)
         if actions.PRE_FLOP in streets:
             for a in self.pre_flop_actions:
@@ -64,6 +85,66 @@ class Hand:
             if a.action_type == actions.FOLD:
                 return False
         return False
+
+    def did_player_pfr(self, player_id):
+        """returns: if player ever opened or raised pre-flop (PFR = pre-flop raise)"""
+        return self.did_player_raise(player_id, street=actions.PRE_FLOP)
+
+    def did_player_3bet_pre(self, player_id) -> typing.Tuple[bool, typing.Optional[str]]:
+        """returns: (had_opportunity, 'raise'/'call'/'fold')"""
+        raise_cnt = 0
+        for a in self.all_actions(street=actions.PRE_FLOP):
+            if a.is_aggro():
+                if Player.names_eq(player_id, a.player_id):
+                    if raise_cnt == 1:
+                        return True, actions.RAISE  # player is 2nd raiser
+                    else:
+                        return False, None  # player didn't have opportunity
+                else:
+                    raise_cnt += 1
+            elif Player.names_eq(player_id, a.player_id):
+                if raise_cnt == 1:
+                    return True, a.action_type  # player had opportunity but called or folded
+                else:
+                    return False, None  # player didn't have opportunity
+
+    def get_action_seq_string(self, street=actions.PRE_FLOP):
+        res = []
+        for act in self.all_actions(street=street):
+            is_hero = Player.names_eq(self.hero_id, act.player_id)
+            if act.action_type == actions.FOLD:
+                if is_hero:
+                    res.append('F')
+                    break
+            elif act.action_type in (actions.BB, actions.SB, actions.ANTE):
+                continue
+            elif act.action_type == actions.CALL:
+                res.append('C' if is_hero else 'c')
+            elif act.action_type in (actions.OPEN, actions.RAISE):
+                res.append('R' if is_hero else 'r')
+            elif act.action_type == actions.CHECK:
+                res.append('X' if is_hero else 'x')
+        return "".join(res)
+
+    def did_player_4bet_pre(self, player_id):
+        """returns: (had_opportunity, 'raise'/'call'/'fold')"""
+        player_opened = False
+        someone_raised = False
+        for a in self.all_actions(street=actions.PRE_FLOP):
+            if a.is_aggro():
+                if Player.names_eq(player_id, a.player_id):
+                    if player_opened and someone_raised:
+                        return True, actions.RAISE
+                    elif someone_raised:
+                        return False, None  # we're 3betting
+                else:
+                    if someone_raised:
+                        return False, None  # two opponents took aggressive actions
+
+    def did_player_raise(self, player_id, street=actions.ANY):
+        for a in self.all_actions(player_id=self.hero_id, street=street):
+            if Player.names_eq(player_id, a.player_id) and a.is_aggro():
+                return True
 
     def did_hero_win(self):
         return self.get_hero().net() > 0
@@ -321,6 +402,14 @@ class HandGroup(collections.abc.Sequence):
     def __getitem__(self, item):
         return self.hands[item]
 
+    def dates(self) -> typing.List[str]:
+        res = []
+        for h in self.hands:
+            datestr = h.datetime.split("T")[0]
+            if len(res) == 0 or res[-1] != datestr:
+                res.append(datestr)
+        return res
+
     def intersect(self, other: 'HandGroup') -> 'HandGroup':
         my_hands = set(self.hands)
         other_hands = set(other.hands)
@@ -337,13 +426,13 @@ class HandGroup(collections.abc.Sequence):
         new_hands = [h for h in self.hands if filter.test(h)]
         return HandGroup(new_hands, desc=desc if desc is not None else f"F({self.desc})")
 
-    def vpip_pcnt(self):
+    def vpip_pcnt(self, street=actions.PRE_FLOP):
         if len(self) == 0:
             return 0
         else:
             cnt = 0
             for h in self.hands:
-                if h.did_hero_vpip():
+                if h.did_hero_vpip(street=street):
                     cnt += 1
             return cnt / len(self)
 

@@ -12,6 +12,8 @@ import locale
 
 HERO_ID = 'k-xm91OpZ6'              # ID of the player to track.
 LOG_DOWNLOADER_ID = 'k-xm91OpZ6'    # ID of the player who downloaded the logs.
+# LOG_DIR = "testdata"
+LOG_DIR = "C:\\Users\\david\\Desktop\\Poker Notes\\logs"
 
 def scrape(hero, logfilepath) -> typing.List[hands.Hand]:
     res = []
@@ -111,7 +113,7 @@ def _create_hand_from_lines(hero_id, configs, lines) -> typing.Optional[hands.Ha
                 _get_player(player_list, name_shows[0]).cards = [
                     name_shows[1].split(", ")
                 ]
-        elif _find_text(line[0], r'Flop: .*', allow_fail=True):
+        elif _find_text(line[0], r'Flop:[ ]+.*', allow_fail=True) is not None:
             break
 
         p = _get_player(player_list, name)
@@ -120,27 +122,27 @@ def _create_hand_from_lines(hero_id, configs, lines) -> typing.Optional[hands.Ha
             pos += 1
         lines.pop(0)
 
-    flop_line = _pop_line_matching(lines, r'Flop: .*', allow_fail=True)
+    flop_line = _pop_line_matching(lines, r'Flop:[ ]+.*', allow_fail=True)
     if flop_line is not None:
-        flop_raw = _find_text(flop_line[0], "Flop: [(.*)]")[0].split(", ")
+        flop_raw = _find_text(flop_line[0], r'Flop:[ ]+\[(.*)\]')[0].split(", ")
         hand.board = [_convert_card(c) for c in flop_raw] + [None, None]
     else:
         return hand if hand.get_hero() is not None else None
 
     hand.flop_actions = _process_post_flop_actions(hand, lines, actions.FLOP)
 
-    turn_line = _pop_line_matching(lines, r'Turn: .*', allow_fail=True)
+    turn_line = _pop_line_matching(lines, r'Turn:[ ]+.*', allow_fail=True)
     if turn_line is not None:
-        turn_raw = _find_text(flop_line[0], "Turn: [.*, [(.*)]]")[0]
+        turn_raw = _find_text(turn_line[0], r'Turn:[ ]+.* \[(.*)\]')[0]
         hand.board[3] = _convert_card(turn_raw)
     else:
         return hand if hand.get_hero() is not None else None
 
     hand.turn_actions = _process_post_flop_actions(hand, lines, actions.TURN)
 
-    river_line = _pop_line_matching(lines, r'River: .*', allow_fail=True)
+    river_line = _pop_line_matching(lines, r'River:[ ]+.*', allow_fail=True)
     if river_line is not None:
-        river_raw = _find_text(flop_line[0], "River: [.*, [(.*)]]")[0]
+        river_raw = _find_text(river_line[0], r'River:[ ]+.* \[(.*)\]')[0]
         hand.board[4] = _convert_card(river_raw)
     else:
         return hand if hand.get_hero() is not None else None
@@ -178,11 +180,11 @@ def _process_post_flop_actions(hand, lines, street):
         elif name_amt := _find_text(line[0], r'"(.*)" collected ([\d\.]+) from pot .*', allow_fail=True):
             name, amt = name_amt[0], float(name_amt[1])
             _get_player(hand.players, name).gain += amt
-        elif street == "flop" and _find_text(line[0], r'Turn:  .*', allow_fail=True):
+        elif street == actions.FLOP and _find_text(line[0], r'Turn:[ ]+.*', allow_fail=True) is not None:
             break
-        elif street == "turn" and _find_text(line[0], r'River:  .*', allow_fail=True):
+        elif street == actions.TURN and _find_text(line[0], r'River:[ ]+.*', allow_fail=True) is not None:
             break
-        elif street == "river" and _find_text(line[0], r'-- ending hand .*', allow_fail=True):
+        elif street == actions.RIVER and _find_text(line[0], r'-- ending hand .*', allow_fail=True) is not None:
             break
         lines.pop(0)
     return acts
@@ -235,22 +237,24 @@ def _find_text(search_domain, pattern, allow_fail=False):
     result = re.search(pattern, search_domain)
     if result is None:
         if not allow_fail:
-            raise ValueError(f"Failed to find pattern '{pattern}' in: {search_domain}")
+            raise ValueError(f"Failed to find pattern '{pattern}' in: '{search_domain}'")
         else:
             return None
     return result.groups()
 
 if __name__ == "__main__":
-    logdir = "C:\\Users\\david\\Desktop\\Poker Notes\\logs"
-    filenames = os.listdir(logdir)
+    locale.setlocale(locale.LC_ALL, '')
+    filenames = os.listdir(LOG_DIR)
     all_hands = hands.HandGroup([], desc="All Hands")
     for f in filenames:
-        hl = scrape(HERO_ID, os.path.join(logdir, f))
-        print(f"Scraped {len(hl)} hand(s) from: {f}")
+        hl = scrape(HERO_ID, os.path.join(LOG_DIR, f))
+        group = hands.HandGroup(hl)
+        dates = group.dates()
+        print(f"Scraped {len(hl):<4} hand(s) from: {f} {locale.currency(group.net_gain()):<9} ({dates[0] if len(dates) > 0 else "?/?/????"})")
         all_hands.extend(hl)
+        # for h in hl:
+        #     print(f"  {h}")
     print()
-
-    locale.setlocale(locale.LC_ALL, '')
 
     print("-- Summary --")
     print(f"Hands:      {len(all_hands)} (in {all_hands.session_count()} sessions)")
@@ -258,6 +262,7 @@ if __name__ == "__main__":
     saw_flop_filter = filters.HeroSawStreet(actions.FLOP)
     saw_flop_hands = all_hands.filter(saw_flop_filter, desc="Saw Flop")
     print(f"Saw Flop:   {len(saw_flop_hands)} time(s) ({len(saw_flop_hands) / len(all_hands) * 100.:.2f}%)")
+    print(f"VPIP:       {all_hands.vpip_pcnt() * 100:.1f}%")
     print(f"Net Gain:   {locale.currency(all_hands.net_gain())}")
     print()
 
@@ -306,7 +311,7 @@ if __name__ == "__main__":
         "4-way+ Flops": filters.HeroSawStreet(actions.FLOP) & filters.Multiway(actions.FLOP, at_least=4),
 
         "Gets to Showdown": filters.HeroSawStreet(actions.SHOWDOWN),
-        "Doesn't get to Showdown": filters.HeroVPIP(street=actions.ANY) & ~filters.HeroSawStreet(actions.SHOWDOWN)
+        "Doesn't get to Showdown": filters.HeroVPIP() & ~filters.HeroSawStreet(actions.SHOWDOWN)
     }
 
     custom_results = [all_hands.filter(custom_filters[f], desc=f) for f in custom_filters]
@@ -314,7 +319,6 @@ if __name__ == "__main__":
 
     for res in custom_results:
         print(res.summary())
-        # print(f"Hands: {filtered_hands.get_hole_card_freqs()}")
     print()
 
     print("-- Per-Hand Stats --")
