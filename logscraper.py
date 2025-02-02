@@ -9,6 +9,7 @@ import os
 import csv
 import re
 import locale
+import scraping
 
 HERO_ID = 'k-xm91OpZ6'              # ID of the player to track.
 LOG_DOWNLOADER_ID = 'k-xm91OpZ6'    # ID of the player who downloaded the logs.
@@ -53,7 +54,7 @@ def _update_configs(configs, line):
 
 def _create_hand_from_lines(hero_id, configs, lines) -> typing.Optional[hands.Hand]:
     intro_line = _pop_line_matching(lines, r'-- starting hand #(\d+).*')
-    datetime = intro_line[1]
+    timestamp = scraping.parse_utc_timestamp(intro_line[1])
     hand_idx = int(_find_text(intro_line[0], r'-- starting hand #(\d+).*')[0])
 
     players_line = _pop_line_matching(lines, r'Player stacks: (.*)')
@@ -61,9 +62,9 @@ def _create_hand_from_lines(hero_id, configs, lines) -> typing.Optional[hands.Ha
     raw_players = _find_text(players_line[0], r'Player stacks: (.*)')[0].split(" | ")
     for p in raw_players:
         pname, pstack = _find_text(p, r'"(.*)" \((.*)\)')
-        player_list.append(hands.Player(pname, pstack, -1, (None, None)))
+        player_list.append(hands.Player(pname, float(pstack), -1, (None, None)))
 
-    hand = hands.Hand(datetime, configs, hand_idx, hero_id, player_list)
+    hand = hands.Hand(timestamp, configs, hand_idx, hero_id, player_list)
 
     hero = hand.get_hero()
     your_hand_line = _pop_line_matching(lines, r'Your hand is.*', allow_fail=True)
@@ -78,11 +79,15 @@ def _create_hand_from_lines(hero_id, configs, lines) -> typing.Optional[hands.Ha
         if fields := _find_text(line[0], r'"(.*)" posts a small blind of ([\d\.]+)( and go all in)?', allow_fail=True):
             name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.SB, actions.PRE_FLOP, all_in=all_in))
-            _get_player(player_list, name).street_nets['pre-flop'] = -amt
+            _get_player(player_list, name).street_nets['pre-flop'] -=amt
         elif fields := _find_text(line[0], r'"(.*)" posts a big blind of ([\d\.]+)( and go all in)?', allow_fail=True):
             name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
-            hand.pre_flop_actions.append(actions.Action(name, amt, actions.BB, actions.PRE_FLOP))
-            _get_player(player_list, name).street_nets['pre-flop'] = -amt
+            hand.pre_flop_actions.append(actions.Action(name, amt, actions.BB, actions.PRE_FLOP, all_in=all_in))
+            _get_player(player_list, name).street_nets['pre-flop'] -=amt
+        elif fields := _find_text(line[0], r'"(.*)" posts a miss(?:.*) of ([\d\.]+)( and go all in)?', allow_fail=True):
+            # if you sit out during your blind(s) and then rejoin, it compels you to post a missing SB/BB at your current position.
+            name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
+            _get_player(player_list, name).street_nets[actions.PRE_FLOP] -= amt
         elif fields := _find_text(line[0], r'"(.*)" calls ([\d\.]+)( and go all in)?', allow_fail=True):
             name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.CALL, actions.PRE_FLOP))
@@ -104,7 +109,7 @@ def _create_hand_from_lines(hero_id, configs, lines) -> typing.Optional[hands.Ha
         elif name_amt := _find_text(line[0], r'Uncalled bet of (.*) returned to "(.*)"', allow_fail=True):
             amt, name = float(name_amt[0]), name_amt[1]
             _get_player(player_list, name).gain += amt
-        elif name_amt := _find_text(line[0], r'"(.*)" collected ([\d\.]+) from pot', allow_fail=True):
+        elif name_amt := _find_text(line[0], r'"(.*)" collected ([\d\.]+) from pot.*', allow_fail=True):
             name, amt = name_amt[0], float(name_amt[1])
             _get_player(player_list, name).gain += amt
             return hand if hand.get_hero() is not None else None
@@ -177,7 +182,7 @@ def _process_post_flop_actions(hand, lines, street):
         elif name_amt := _find_text(line[0], r'Uncalled bet of (.*) returned to "(.*)"', allow_fail=True):
             amt, name = float(name_amt[0]), name_amt[1]
             _get_player(hand.players, name).gain += amt
-        elif name_amt := _find_text(line[0], r'"(.*)" collected ([\d\.]+) from pot .*', allow_fail=True):
+        elif name_amt := _find_text(line[0], r'"(.*)" collected ([\d\.]+) from pot.*', allow_fail=True):
             name, amt = name_amt[0], float(name_amt[1])
             _get_player(hand.players, name).gain += amt
         elif street == actions.FLOP and _find_text(line[0], r'Turn:[ ]+.*', allow_fail=True) is not None:
@@ -246,25 +251,43 @@ if __name__ == "__main__":
     locale.setlocale(locale.LC_ALL, '')
     filenames = os.listdir(LOG_DIR)
     all_hands = hands.HandGroup([], desc="All Hands")
+    all_groups = []
     for f in filenames:
         hl = scrape(HERO_ID, os.path.join(LOG_DIR, f))
         group = hands.HandGroup(hl)
-        dates = group.dates()
-        print(f"Scraped {len(hl):<4} hand(s) from: {f} {locale.currency(group.net_gain()):<9} ({dates[0] if len(dates) > 0 else "?/?/????"})")
+        all_groups.append((group, f))
         all_hands.extend(hl)
-        # for h in hl:
-        #     print(f"  {h}")
+    for group, fname in sorted(all_groups, key=lambda x: x[0].dates()):
+        dates = group.dates()
+
+        print(f"Scraped {len(group):<4} hand(s) from: {fname} {locale.currency(group.net_gain()):<9} "
+              f"({dates[0] if len(dates) > 0 else "?/?/????"})")
     print()
+
+    # for debugging
+    if len(all_groups) == 1:
+        next_stack_should_be = None
+        for h in all_hands:
+            if next_stack_should_be is not None and abs(h.get_hero().stack - next_stack_should_be) > 0.005:
+                print(f"*** Unexpected stack (expect={locale.currency(next_stack_should_be)}, actual={h.get_hero().stack})")
+            print(h)
+            next_stack_should_be = h.get_hero().stack + h.get_hero().net()
 
     print("-- Summary --")
     print(f"Hands:      {len(all_hands)} (in {all_hands.session_count()} sessions)")
-    # print(f"Total Flux:     {locale.currency(all_hands.total_flux())}")
     saw_flop_filter = filters.HeroSawStreet(actions.FLOP)
     saw_flop_hands = all_hands.filter(saw_flop_filter, desc="Saw Flop")
     print(f"Saw Flop:   {len(saw_flop_hands)} time(s) ({len(saw_flop_hands) / len(all_hands) * 100.:.2f}%)")
     print(f"VPIP:       {all_hands.vpip_pcnt() * 100:.1f}%")
     print(f"Net Gain:   {locale.currency(all_hands.net_gain())}")
     print()
+
+    # start = 10
+    # for h in all_hands:
+    #     if abs(start - h.get_hero().stack) > 0.01:
+    #         print(f"{start} != {h}")
+    #     start += h.get_hero().net()
+    # print(start)
 
     print("-- Situational Breakdowns --")
 

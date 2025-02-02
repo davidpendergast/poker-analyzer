@@ -1,6 +1,7 @@
 import collections
 import locale
 import typing
+import datetime
 
 import cardutils
 import actions
@@ -8,8 +9,8 @@ import actions
 
 class Hand:
 
-    def __init__(self, datetime, configs, hand_idx, hero_id, players):
-        self.datetime = datetime
+    def __init__(self, timestamp: datetime.datetime, configs, hand_idx, hero_id, players):
+        self.timestamp = timestamp
         self.configs = configs
         self.hand_idx = hand_idx
         self.hero_id = hero_id
@@ -23,19 +24,20 @@ class Hand:
         self.river_actions = []
 
     def __hash__(self):
-        return hash((self.datetime, self.hand_idx, self.hero_id))
+        return hash((self.timestamp, self.hand_idx, self.hero_id))
 
     def __eq__(self, other):
-        return (self.datetime == other.datetime
+        return (self.timestamp == other.timestamp
                 and self.hand_idx == other.hand_idx
                 and self.hero_id == other.hero_id)
 
     def __str__(self):
         net = locale.currency(self.get_hero().net())
         cards = "".join(self.get_hero().cards)
+        stack = locale.currency(self.get_hero().stack)
 
         preflop_acts = self.get_action_seq_string(street=actions.PRE_FLOP)
-        res = f"Hand #{self.hand_idx:<3} {net:<8} {cards} | {preflop_acts}"
+        res = f"Hand #{self.hand_idx:<3} {self.timestamp} {net:<8} {stack:<8} {cards} | {preflop_acts}"
         if res.endswith("F"):
             return res
 
@@ -124,6 +126,8 @@ class Hand:
                 res.append('R' if is_hero else 'r')
             elif act.action_type == actions.CHECK:
                 res.append('X' if is_hero else 'x')
+            if act.is_all_in():
+                res.append('!')
         return "".join(res)
 
     def did_player_4bet_pre(self, player_id):
@@ -395,7 +399,7 @@ class HandGroup(collections.abc.Sequence):
     def __len__(self):
         return len(self.hands)
 
-    def __iter__(self):
+    def __iter__(self) -> typing.Generator[Hand, None, None]:
         for h in self.hands:
             yield h
 
@@ -405,7 +409,7 @@ class HandGroup(collections.abc.Sequence):
     def dates(self) -> typing.List[str]:
         res = []
         for h in self.hands:
-            datestr = h.datetime.split("T")[0]
+            datestr = h.timestamp.strftime("%Y-%m-%d")
             if len(res) == 0 or res[-1] != datestr:
                 res.append(datestr)
         return res
