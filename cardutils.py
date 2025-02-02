@@ -61,8 +61,10 @@ def to_card_code(cards) -> str:
     (6s, 6c) -> 66
     (Jh, Td) -> JTo
     """
-    if cards[0] is None or cards[1] is None:
-        return None
+    if cards == (None, None):
+        return '??'
+    elif cards[1] is None:
+        return cards[0][0] + '?'
     else:
         c0 = cards[0]
         c1 = cards[1]

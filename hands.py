@@ -33,32 +33,35 @@ class Hand:
 
     def __str__(self):
         net = locale.currency(self.get_hero().net())
-        cards = "".join(self.get_hero().cards)
+        cards = self.get_hero().get_cards_str()
         stack = locale.currency(self.get_hero().stack)
+
+        got_to_flop = self.hero_got_to_street(actions.FLOP)
+        got_to_turn = self.hero_got_to_street(actions.TURN)
+        got_to_river = self.hero_got_to_street(actions.RIVER)
+        got_to_showdown = self.hero_got_to_street(actions.SHOWDOWN)
 
         preflop_acts = self.get_action_seq_string(street=actions.PRE_FLOP)
         res = f"Hand #{self.hand_idx:<3} {self.timestamp} {net:<8} {stack:<8} {cards} | {preflop_acts}"
-        if res.endswith("F"):
+        if not got_to_flop:
             return res
 
         flop_acts = self.get_action_seq_string(street=actions.FLOP)
-        if len(flop_acts) > 0:
-            res = f"{res} | {self.board[0:3]} {flop_acts}"
-        if res.endswith("F"):
+        res = f"{res} {self.board[0:3]}{f' {flop_acts}' if len(flop_acts) > 0 else ''}"
+        if not got_to_turn:
             return res
 
         turn_acts = self.get_action_seq_string(street=actions.TURN)
-        if len(turn_acts) > 0:
-            res = f"{res} | {self.board[3:4]} {turn_acts}"
-        if res.endswith("F"):
+        res = f"{res} {self.board[3:4]}{f' {turn_acts}' if len(turn_acts) > 0 else ''}"
+        if not got_to_river:
             return res
 
         river_acts = self.get_action_seq_string(street=actions.RIVER)
-        if len(river_acts) > 0:
-            res = f"{res} | {self.board[4:5]} {river_acts}"
-        if res.endswith("F"):
+        res = f"{res} {self.board[4:5]}{f' {river_acts}' if len(river_acts) > 0 else ''}"
+        if not got_to_showdown:
             return res
 
+        # TODO summarize showdown
         return res
 
     def all_actions(self, player_id=None, street=actions.ANY) -> typing.Generator[actions.Action, None, None]:
@@ -376,8 +379,14 @@ class Player:
         hand = str(self.cards[0] or "??") + str(self.cards[1] or "??")
         return f"{n} [{hand}] ({net:.2f})"
 
-    def get_card_code(self):
+    def get_card_code(self) -> str:
+        """returns: AKs, JTo style string"""
         return cardutils.to_card_code(self.cards)
+
+    def get_cards_str(self) -> str:
+        """returns: AdKd, JcTs style string"""
+        return (f"{self.cards[0] if self.cards[0] is not None else '??'}"
+                f"{self.cards[1] if self.cards[1] is not None else '??'}")
 
 
     def __repr__(self):

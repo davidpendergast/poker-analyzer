@@ -36,6 +36,16 @@ class HeroCardFilter(Filter):
         hero = hand.get_hero()
         return cardutils.cards_match_pattern(hero.cards, self.pattern)
 
+class HeroCardsKnown(Filter):
+
+    def __init__(self, counts=(2,)):
+        super().__init__()
+        self.counts = (counts,) if isinstance(counts, int) else counts
+
+    def test(self, hand: 'hands.Hand') -> bool:
+        hero = hand.get_hero()
+        return len(list(c for c in hero.cards if c is not None)) in self.counts
+
 
 class HeroSawStreet(Filter):
 
