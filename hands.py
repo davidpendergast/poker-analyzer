@@ -353,7 +353,7 @@ class Player:
     @staticmethod
     def names_eq(id1, id2) -> bool:
         if ' @ ' in id1 and ' @ ' in id2:
-            return ' @ '.split(id1)[1] == ' @ '.split(id2)[1]  # Compare by IDs
+            return id1.split(' @ ')[1] == id2.split(' @ ')[1]  # Compare by IDs
         elif ' @ ' in id1:
             n1, n2 = id1.split(' @ ')
             return id2 == n1 or id2 == n2
@@ -448,6 +448,24 @@ class HandGroup(collections.abc.Sequence):
                 if h.did_hero_vpip(street=street):
                     cnt += 1
             return cnt / len(self)
+
+    def get_3bet_pcnt(self):
+        """ returns: number of 3bets / number of opportunities to 3bet"""
+        if len(self) == 0:
+            return 0
+        else:
+            had_opportunity = 0
+            cnt = 0
+            for h in self.hands:
+                opp, res = h.did_player_3bet_pre(h.hero_id)
+                if opp:
+                    had_opportunity += 1
+                    if res == actions.RAISE:
+                        cnt += 1
+            if had_opportunity == 0:
+                return 0
+            else:
+                return cnt / had_opportunity
 
     def net_gain(self):
         res = 0

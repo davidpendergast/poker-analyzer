@@ -63,7 +63,7 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
 
     hero = hand.get_hero()
     your_hand_line = _pop_line_matching(lines, r'Your hand is.*', allow_fail=True)
-    if hero is not None and log_downloader_id == hero_id and your_hand_line is not None:
+    if hero is not None and hands.Player.names_eq(log_downloader_id, hero_id) and your_hand_line is not None:
         c1, c2 = _find_text(your_hand_line[0], "Your hand is (.+), (.+)")
         hero.cards = _convert_card(c1), _convert_card(c2)
 

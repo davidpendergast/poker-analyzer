@@ -9,11 +9,14 @@ import os
 import locale
 import scraping
 
-HERO_ID = 'k-xm91OpZ6'              # ID of the player to track.
-# HERO_ID = 'TNLfj8hFbJ'              # (for debug) M1sf1re
-# HERO_ID = 'B8jVhFGWIY'              # (for debug) Ravi
-# HERO_ID = 'pvi7lGaAqX'              # (for debug) Flow
+HERO_ID = 'Ghast @ k-xm91OpZ6'              # ID of the player to track.
+# HERO_ID = 'M1sf1re @ TNLfj8hFbJ'            # (for debug) M1sf1re
+# HERO_ID = 'Ravi @ B8jVhFGWIY'               # (for debug) Ravi
+# HERO_ID = 'Flow @ pvi7lGaAqX'               # (for debug) Flow
+# HERO_ID = 'Freky @ rnl8dHxqtf'              # (for debug) Freky
+
 LOG_DOWNLOADER_ID = 'k-xm91OpZ6'    # ID of the player who downloaded the logs.
+
 LOG_DIR = "C:\\Users\\david\\Desktop\\Poker Notes\\logs"
 # LOG_DIR = "testdata"
 
@@ -47,7 +50,7 @@ if __name__ == "__main__":
             print(h)
             next_stack_should_be = h.get_hero().stack + h.get_hero().net()
 
-    print(f"-- Summary --")
+    print(f"-- Summary of {HERO_ID} --")
     print(f"Hands:        {len(all_hands)} (in {all_hands.session_count()} sessions)")
 
     # When analyzing another player, a good chunk of their cards will be unknown.
@@ -61,6 +64,7 @@ if __name__ == "__main__":
     saw_flop_hands = all_hands.filter(saw_flop_filter, desc="Saw Flop")
     print(f"Saw Flop:     {len(saw_flop_hands)} time(s) ({len(saw_flop_hands) / len(all_hands) * 100.:.2f}%)")
     print(f"VPIP:         {all_hands.vpip_pcnt() * 100:.1f}%")
+    print(f"3BET%:        {all_hands.get_3bet_pcnt() * 100:.1f}%")
     print(f"Net Gain:     {locale.currency(all_hands.net_gain())}")
     print()
 
@@ -117,7 +121,8 @@ if __name__ == "__main__":
     custom_results.sort(key=lambda x: x.avg_bbs_per_play(), reverse=True)
 
     for res in custom_results:
-        print(res.summary())
+        if len(res) > 0:  # skip categories with zero hands
+            print(res.summary())
     print()
 
     print("-- Per-Hand Stats --")
