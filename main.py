@@ -62,10 +62,14 @@ if __name__ == "__main__":
 
     saw_flop_filter = filters.HeroSawStreet(actions.FLOP)
     saw_flop_hands = all_hands.filter(saw_flop_filter, desc="Saw Flop")
+    sign = '+' if all_hands.net_gain() > 0 else ''
     print(f"Saw Flop:     {len(saw_flop_hands)} time(s) ({len(saw_flop_hands) / len(all_hands) * 100.:.2f}%)")
-    print(f"VPIP:         {all_hands.vpip_pcnt() * 100:.1f}%")
-    print(f"3BET%:        {all_hands.get_3bet_pcnt() * 100:.1f}%")
+    print(f"VPIP:         {all_hands.vpip_pcnt() * 100:.2f}%")
+    print(f"3BET%:        {all_hands.get_3bet_pcnt() * 100:.2f}%")
     print(f"Net Gain:     {locale.currency(all_hands.net_gain())}")
+    print(f"Edge:         {sign}{all_hands.net_bbs() / len(all_hands):.2f}bb per hand, "
+                        f"{sign}{locale.currency(all_hands.net_gain() / all_hands.total_duration() * 3600.)} "
+                        f"per hour (in {round(all_hands.total_duration() / 3600.)} hours)")
     print()
 
     print("-- Situational Breakdowns --")

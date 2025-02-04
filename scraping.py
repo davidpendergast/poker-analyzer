@@ -49,8 +49,15 @@ def _update_configs(configs, line):
 
 def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typing.Optional[hands.Hand]:
     intro_line = _pop_line_matching(lines, r'-- starting hand #(\d+).*')
-    timestamp = parse_utc_timestamp(intro_line[1])
     hand_idx = int(_find_text(intro_line[0], r'-- starting hand #(\d+).*')[0])
+    timestamp = parse_utc_timestamp(intro_line[1])
+
+    end_line = _find_line_matching(lines, r'-- ending hand #(\d+).*')
+    if end_line is None:
+        # Incomplete hand, probably due to log-truncation (after 20k lines)
+        # or the game ending while paused. Not much we can do.
+        return None
+    end_timestamp = parse_utc_timestamp(end_line[1])
 
     players_line = _pop_line_matching(lines, r'Player stacks: (.*)')
     player_list = []
@@ -59,7 +66,7 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
         pname, pstack = _find_text(p, r'"(.*)" \((.*)\)')
         player_list.append(hands.Player(pname, float(pstack), -1, (None, None)))
 
-    hand = hands.Hand(timestamp, configs, hand_idx, hero_id, player_list)
+    hand = hands.Hand(timestamp, end_timestamp, configs, hand_idx, hero_id, player_list)
 
     hero = hand.get_hero()
     your_hand_line = _pop_line_matching(lines, r'Your hand is.*', allow_fail=True)
@@ -246,6 +253,14 @@ def _pop_line_matching(lines, pattern, line_idx=0, allow_fail=False):
     else:
         raise ValueError(f"Failed to find line matching pattern: {pattern}\n  "
                         f"{'\n  '.join(list(str(s) for s in discarded))}")
+
+def _find_line_matching(lines, pattern, line_idx=0):
+    for cur in lines:
+        if line_idx < len(cur):
+            res = _find_text(cur[line_idx], pattern, allow_fail=True)
+            if res is not None:
+                return cur
+    return None
 
 def _find_text(search_domain, pattern, allow_fail=False):
     """

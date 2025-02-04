@@ -9,8 +9,9 @@ import actions
 
 class Hand:
 
-    def __init__(self, timestamp: datetime.datetime, configs, hand_idx, hero_id, players):
+    def __init__(self, timestamp: datetime.datetime, end_timestamp: datetime.datetime, configs, hand_idx, hero_id, players):
         self.timestamp = timestamp
+        self.end_timestamp = end_timestamp
         self.configs = configs
         self.hand_idx = hand_idx
         self.hero_id = hero_id
@@ -333,6 +334,10 @@ class Hand:
     def get_hero(self) -> 'typing.Optional[Player]':
         return self.get_player(self.hero_id)
 
+    def duration(self) -> float:
+        """returns: wall-clock duration of hand in seconds"""
+        return (self.end_timestamp - self.timestamp).total_seconds()
+
 
 class Player:
 
@@ -421,6 +426,13 @@ class HandGroup(collections.abc.Sequence):
             datestr = h.timestamp.strftime("%Y-%m-%d")
             if len(res) == 0 or res[-1] != datestr:
                 res.append(datestr)
+        return res
+
+    def total_duration(self) -> float:
+        """returns: total sum of the wall-clock durations of the hands in this group, in seconds"""
+        res = 0
+        for h in self.hands:
+            res += h.duration()
         return res
 
     def intersect(self, other: 'HandGroup') -> 'HandGroup':
