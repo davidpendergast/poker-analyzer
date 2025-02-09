@@ -1,8 +1,6 @@
 import typing
 
-import cardutils
-import actions
-import hands
+from poker import cardutils, actions, hands
 
 
 def hero_saw_flop(hand) -> bool:

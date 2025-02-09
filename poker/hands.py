@@ -3,9 +3,7 @@ import locale
 import typing
 import datetime
 
-import cardutils
-import actions
-
+from poker import cardutils, actions
 
 class Hand:
 
@@ -263,7 +261,7 @@ class Hand:
 
         # remaining players are UTG+
         if len(seen_players) >= 8:
-            res[actions.UTG_PLUS] = seen_players[3:len(seen_players)-4]
+            res[actions.UTG_PLUS] = seen_players[3:len(seen_players) - 4]
 
         # god i wish there was an easier way to do this
         if len(seen_players) == 2:

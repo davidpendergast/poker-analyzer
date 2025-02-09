@@ -1,13 +1,10 @@
 # -*- coding: utf-8 -*-
 
-import hands
-import filters
-import actions
+from poker import filters, actions, hands, scraping
 
 import typing
 import os
 import locale
-import scraping
 
 HERO_ID = 'Ghast @ k-xm91OpZ6'              # ID of the player to track.
 # HERO_ID = 'M1sf1re @ TNLfj8hFbJ'            # (for debug) M1sf1re

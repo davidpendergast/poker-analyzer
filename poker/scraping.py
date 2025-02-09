@@ -1,7 +1,6 @@
 import datetime
 
-import hands
-import actions
+from poker import hands, actions
 
 import typing
 import os
