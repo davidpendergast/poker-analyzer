@@ -3,7 +3,7 @@ import os
 import pygame
 
 NAME_OF_GAME = "Ghast Poker Analyzer"
-GAME_DIMS = (320, 240)
+GAME_DIMS = (640, 480)
 THRESH = 0.0001
 
 IS_DEV = os.path.exists(".gitignore")

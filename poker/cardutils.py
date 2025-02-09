@@ -80,6 +80,16 @@ def to_card_code(cards) -> str:
         else:
             return res + "o"  # Off-Suited
 
+
+def all_card_codes() -> str:
+    for yrank in RANKS:
+        for xrank in RANKS:
+            if RANKS.index(xrank) <= RANKS.index(yrank):
+                yield to_card_code((f"{yrank}s", f"{xrank}h"))  # pairs and off-suits
+            else:
+                yield to_card_code((f"{yrank}s", f"{xrank}s"))  # suited
+
+
 def cards_match_pattern(cards, pattern_code: str):
     patterns = re.split(r'[ ,]+', pattern_code.strip())
     for pattern in patterns:

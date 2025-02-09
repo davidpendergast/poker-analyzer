@@ -1,5 +1,8 @@
 import pygame
 import const
+import poker.cardutils
+
+import poker.hands as hands
 
 import ui.scenes as scenes
 import ui.utils as utils
@@ -9,20 +12,15 @@ if __name__ == "__main__":
     pygame.init()
     screen = utils.make_fancy_scaled_display(
         const.GAME_DIMS,
-        scale_factor=2.,
+        scale_factor=1.,
         outer_fill_color=(0, 0, 0),
         extra_flags=pygame.RESIZABLE
     )
     pygame.display.set_caption(const.NAME_OF_GAME)
 
-    # sprites.Sheet.load(utils.res_path("assets/sprites.png"),
-    #                    utils.res_path("assets/fonts/m6x11.ttf"),
-    #                    utils.res_path("assets/icon_48x48.png"))
-
-    # pygame.display.set_icon(sprites.Sheet.ICON_IMG)
-
-    square = elements.Element()
-    square.rect = [50, 100, 200, 100]
+    grid = elements.CardGrid([20, screen.get_height() / 2 - 400 / 2, 400, 400], hands.HandGroup([]))
+    # for cc in poker.cardutils.all_card_codes():
+    #     print(f"{cc}:\t{grid.get_rect_for(cc)}")
 
     clock = pygame.time.Clock()
     dt = 0
@@ -60,7 +58,7 @@ if __name__ == "__main__":
         scene_manager.update(dt)
         scene_manager.render(screen)
 
-        square.render(screen)
+        grid.render(screen)
 
         pygame.display.flip()
 

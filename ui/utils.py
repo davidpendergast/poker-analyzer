@@ -169,6 +169,20 @@ def map_from_rect_to_rect(pt, r1, r2):
     return (x1 * r2[2] + r2[0], y1 * r2[3] + r2[1])
 
 
+def subdivide_evenly_and_center(length, n, integer=True):
+    """Returns [(x0, seg_length), (x1, seg_length), ..., (xn, seg_length)]"""
+    res = []
+    if not integer:
+        for i in range(n):
+            res.append((i * length / n, length / n))
+    else:
+        segment_length = int(length / n)
+        offset = (length - (segment_length * n)) / 2
+        for i in range(n):
+            res.append((offset + segment_length * i, segment_length))
+    return res
+
+
 def circle_contains(center, radius, pt):
     return dist(center, pt) <= radius
 
