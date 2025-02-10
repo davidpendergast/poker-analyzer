@@ -1,7 +1,11 @@
 import typing
 
 import pygame
-import poker as poker
+import poker.filters as filters
+import poker.hands as hands
+import poker.cardutils as cardutils
+
+import ui.sprites as sprites
 import ui.colors as colors
 import ui.utils
 
@@ -104,11 +108,12 @@ class Element:
         return f"{type(self).__name__}(uid={self.uid})"
 
 
-class CardSquare(Element):
+class _CardSquare(Element):
 
     def __init__(self, parent: 'CardGrid', code: str):
         super().__init__()
         self.code = code  # e.g. AKs
+        self.max_profit_color = 15.  # bbs
         self.set_parent(parent)
 
     def get_parent(self) -> 'CardGrid':
@@ -117,32 +122,56 @@ class CardSquare(Element):
     def get_rel_rect(self):
         return self.get_parent().get_rect_for(self.code)
 
+    def _get_subgroup(self) -> hands.HandGroup:
+        return self.get_parent().get_group_for(self.code)
+
+    def render_at(self, surf: pygame.Surface, abs_xy):
+        dims = self.get_dims()
+        rect = [abs_xy[0], abs_xy[1], dims[0], dims[1]]
+
+        hand_group = self._get_subgroup()
+        avg_bbs = hand_group.avg_bbs_per_play()
+        if len(hand_group) == 0:
+            bg_color = colors.DARK_GRAY
+        else:
+            bg_color = colors.profit_gradient(avg_bbs / self.max_profit_color)
+        outline_color = colors.lerp(0.5, bg_color, (0, 0, 0))
+
+        pygame.draw.rect(surf, bg_color, rect)
+        pygame.draw.rect(surf, outline_color, rect, width=1)
+
+        label_txt = sprites.Sprites.FONT.render(self.code, False, colors.BLACK)
+        surf.blit(label_txt, (rect[0] + 1, rect[1] + 1))
+
 
 class CardGrid(Element):
 
-    def __init__(self, rect, group: poker.hands.HandGroup):
+    def __init__(self, rect, group: hands.HandGroup):
         super().__init__()
         self.group = group
 
-        self.grid_dims = (len(poker.cardutils.RANKS),) * 2
+        self.grid_dims = (len(cardutils.RANKS),) * 2
         self._rect = rect
-        self._squares = {}  # card_code -> ((x, y), CardSquare)
+        self._squares = {}  # card_code -> ((x, y), CardSquare, subgroup)
         self._build_sub_elements()
 
     def _build_sub_elements(self):
-        for idx, cc in enumerate(poker.cardutils.all_card_codes()):
+        for idx, cc in enumerate(cardutils.all_card_codes()):
             y = idx // self.grid_dims[0]
             xy = (idx - (y * self.grid_dims[0]), y)
-            square = CardSquare(self, cc)
-            self._squares[cc] = xy, square
+            square = _CardSquare(self, cc)
+            self._squares[cc] = xy, square, self.group.filter(filters.HeroCardFilter(cc))
 
     def get_rel_rect(self) -> typing.Tuple[int, int, int, int]:
         return self._rect
 
     def get_rect_for(self, cardcode: str):
-        (x, y), _ = self._squares[cardcode]
+        (x, y), _, _ = self._squares[cardcode]
         x_segs = ui.utils.subdivide_evenly_and_center(self.get_dims()[0], self.grid_dims[0])
         y_segs = ui.utils.subdivide_evenly_and_center(self.get_dims()[1], self.grid_dims[1])
         return [x_segs[x][0], y_segs[y][0], x_segs[x][1], y_segs[y][1]]
+
+    def get_group_for(self, cardcode: str):
+        return self._squares[cardcode][2]
 
 

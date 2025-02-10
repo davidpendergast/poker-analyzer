@@ -3,8 +3,19 @@ import os
 import pygame
 
 NAME_OF_GAME = "Ghast Poker Analyzer"
-GAME_DIMS = (640, 480)
+GAME_DIMS = (960, 540)
 THRESH = 0.0001
+
+HERO_ID = 'Ghast @ k-xm91OpZ6'              # ID of the player to track.
+# HERO_ID = 'M1sf1re @ TNLfj8hFbJ'            # (for debug) M1sf1re
+# HERO_ID = 'Ravi @ B8jVhFGWIY'               # (for debug) Ravi
+# HERO_ID = 'Flow @ pvi7lGaAqX'               # (for debug) Flow
+# HERO_ID = 'Freky @ rnl8dHxqtf'              # (for debug) Freky
+
+LOG_DOWNLOADER_ID = 'k-xm91OpZ6'    # ID of the player who downloaded the logs.
+
+LOG_DIR = "C:\\Users\\david\\Desktop\\Poker Notes\\logs"
+# LOG_DIR = "testdata"
 
 IS_DEV = os.path.exists(".gitignore")
 

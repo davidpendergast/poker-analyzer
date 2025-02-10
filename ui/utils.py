@@ -99,7 +99,9 @@ def lerp(start, end, t, clamp=True):
     else:
         return tuple(lerp(start[i], end[i], t, clamp=clamp) for i in range(len(start)))
 
-def int_lerp(i1, i2, t):
+def int_lerp(i1, i2, t, clamp=True):
+    if clamp:
+        t = min(1.0, max(0.0, t))
     return round(i1 + t * (i2 - i1))
 
 

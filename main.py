@@ -1,53 +1,16 @@
 # -*- coding: utf-8 -*-
 
-from poker import filters, actions, hands, scraping
-
 import typing
-import os
 import locale
 
-HERO_ID = 'Ghast @ k-xm91OpZ6'              # ID of the player to track.
-# HERO_ID = 'M1sf1re @ TNLfj8hFbJ'            # (for debug) M1sf1re
-# HERO_ID = 'Ravi @ B8jVhFGWIY'               # (for debug) Ravi
-# HERO_ID = 'Flow @ pvi7lGaAqX'               # (for debug) Flow
-# HERO_ID = 'Freky @ rnl8dHxqtf'              # (for debug) Freky
+from poker import filters, actions, hands, scraping
 
-LOG_DOWNLOADER_ID = 'k-xm91OpZ6'    # ID of the player who downloaded the logs.
-
-LOG_DIR = "C:\\Users\\david\\Desktop\\Poker Notes\\logs"
-# LOG_DIR = "testdata"
+import const
 
 if __name__ == "__main__":
-    locale.setlocale(locale.LC_ALL, '')
-    filenames = os.listdir(LOG_DIR)
-    all_hands = hands.HandGroup([], desc="All Hands")
-    all_groups = []
-    for f in filenames:
-        hl = scraping.scrape(HERO_ID, LOG_DOWNLOADER_ID, os.path.join(LOG_DIR, f))
-        group = hands.HandGroup(hl)
-        all_groups.append((group, f))
-        all_hands.extend(hl)
-    for group, fname in sorted(all_groups, key=lambda x: x[0].dates()):
-        dates = group.dates()
+    all_hands = scraping.scrape_directory(const.HERO_ID, const.LOG_DOWNLOADER_ID, const.LOG_DIR)
 
-        print(f"Scraped {len(group):<4} hand(s) from: {fname} {locale.currency(group.net_gain()):<9} "
-              f"({dates[0] if len(dates) > 0 else "?/?/????"})")
-    print()
-
-    if len(all_hands) == 0:
-        print(f"No hands found for HERO_ID={HERO_ID}")
-        raise SystemExit
-
-    # for debugging
-    if len(all_groups) == 1:
-        next_stack_should_be = None
-        for h in all_hands:
-            if next_stack_should_be is not None and abs(h.get_hero().stack - next_stack_should_be) > 0.005:
-                print(f"*** Unexpected stack (expect={locale.currency(next_stack_should_be)}, actual={h.get_hero().stack})")
-            print(h)
-            next_stack_should_be = h.get_hero().stack + h.get_hero().net()
-
-    print(f"-- Summary of {HERO_ID} --")
+    print(f"-- Summary of {const.HERO_ID} --")
     print(f"Hands:        {len(all_hands)} (in {all_hands.session_count()} sessions)")
 
     # When analyzing another player, a good chunk of their cards will be unknown.
@@ -124,6 +87,9 @@ if __name__ == "__main__":
     for res in custom_results:
         if len(res) > 0:  # skip categories with zero hands
             print(res.summary())
+            if res.desc == "AA":
+                for h in res:
+                    print(f"  {h}")
     print()
 
     print("-- Per-Hand Stats --")

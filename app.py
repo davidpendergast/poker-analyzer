@@ -1,12 +1,13 @@
 import pygame
 import const
-import poker.cardutils
 
 import poker.hands as hands
+import poker.scraping as scraping
 
 import ui.scenes as scenes
 import ui.utils as utils
 import ui.elements as elements
+import ui.sprites as sprites
 
 if __name__ == "__main__":
     pygame.init()
@@ -18,7 +19,11 @@ if __name__ == "__main__":
     )
     pygame.display.set_caption(const.NAME_OF_GAME)
 
-    grid = elements.CardGrid([20, screen.get_height() / 2 - 400 / 2, 400, 400], hands.HandGroup([]))
+    sprites.Sprites.initialize(utils.res_path("assets/fonts/m6x11.ttf"))
+    all_hands = scraping.scrape_directory(const.HERO_ID, const.LOG_DOWNLOADER_ID, const.LOG_DIR)
+
+    grid_res = (500, 500)
+    grid = elements.CardGrid([20, screen.get_height() / 2 - grid_res[1] / 2, grid_res[0], grid_res[1]], all_hands)
     # for cc in poker.cardutils.all_card_codes():
     #     print(f"{cc}:\t{grid.get_rect_for(cc)}")
 

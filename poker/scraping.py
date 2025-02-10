@@ -6,6 +6,40 @@ import typing
 import os
 import csv
 import re
+import locale
+
+
+def scrape_directory(hero_id, log_downloader_id, dirpath, desc="All Hands") -> hands.HandGroup:
+    locale.setlocale(locale.LC_ALL, '')
+    all_hands = hands.HandGroup([], desc=desc)
+    all_groups = []
+    filenames = os.listdir(dirpath)
+    for f in filenames:
+        hl = scrape(hero_id, log_downloader_id, os.path.join(dirpath, f))
+        group = hands.HandGroup(hl)
+        all_groups.append((group, f))
+        all_hands.extend(hl)
+    for group, fname in sorted(all_groups, key=lambda x: x[0].dates()):
+        dates = group.dates()
+
+        print(f"Scraped {len(group):<4} hand(s) from: {fname} {locale.currency(group.net_gain()):<9} "
+              f"({dates[0] if len(dates) > 0 else "?/?/????"})")
+    print()
+
+    if len(all_hands) == 0:
+        print(f"No hands found for HERO_ID={hero_id}")
+        raise SystemExit
+
+    # for debugging
+    if len(all_groups) == 1:
+        next_stack_should_be = None
+        for h in all_hands:
+            if next_stack_should_be is not None and abs(h.get_hero().stack - next_stack_should_be) > 0.005:
+                print(f"*** Unexpected stack (expect={locale.currency(next_stack_should_be)}, actual={h.get_hero().stack})")
+            print(h)
+            next_stack_should_be = h.get_hero().stack + h.get_hero().net()
+
+    return all_hands
 
 
 def scrape(hero_id, log_downloader_id, logfilepath) -> typing.List[hands.Hand]:

@@ -5,6 +5,7 @@ import datetime
 
 from poker import cardutils, actions
 
+
 class Hand:
 
     def __init__(self, timestamp: datetime.datetime, end_timestamp: datetime.datetime, configs, hand_idx, hero_id, players):
@@ -41,22 +42,22 @@ class Hand:
         got_to_showdown = self.hero_got_to_street(actions.SHOWDOWN)
 
         preflop_acts = self.get_action_seq_string(street=actions.PRE_FLOP)
-        res = f"Hand #{self.hand_idx:<3} {self.timestamp} {net:<8} {stack:<8} {cards} | {preflop_acts}"
+        res = f"Hand #{self.hand_idx:<3} {self.timestamp.date()} {net:<8} {stack:<8} {cards} | {preflop_acts}"
         if not got_to_flop:
             return res
 
         flop_acts = self.get_action_seq_string(street=actions.FLOP)
-        res = f"{res} {self.board[0:3]}{f' {flop_acts}' if len(flop_acts) > 0 else ''}"
+        res = f"{res} {'[' + ' '.join(self.board[0:3]) + ']'}{f' {flop_acts}' if len(flop_acts) > 0 else ''}"
         if not got_to_turn:
             return res
 
         turn_acts = self.get_action_seq_string(street=actions.TURN)
-        res = f"{res} {self.board[3:4]}{f' {turn_acts}' if len(turn_acts) > 0 else ''}"
+        res = f"{res} {'[' + ' '.join(self.board[3:4]) + ']'}{f' {turn_acts}' if len(turn_acts) > 0 else ''}"
         if not got_to_river:
             return res
 
         river_acts = self.get_action_seq_string(street=actions.RIVER)
-        res = f"{res} {self.board[4:5]}{f' {river_acts}' if len(river_acts) > 0 else ''}"
+        res = f"{res} {'[' + ' '.join(self.board[4:5]) + ']'}{f' {river_acts}' if len(river_acts) > 0 else ''}"
         if not got_to_showdown:
             return res
 
@@ -391,7 +392,6 @@ class Player:
         return (f"{self.cards[0] if self.cards[0] is not None else '??'}"
                 f"{self.cards[1] if self.cards[1] is not None else '??'}")
 
-
     def __repr__(self):
         return f"{type(self).__name__}({self.name=}, {self.stack=}, {self.position=}, {self.cards=}, {self.net=})"
 
@@ -412,7 +412,7 @@ class HandGroup(collections.abc.Sequence):
         return len(self.hands)
 
     def __iter__(self) -> typing.Generator[Hand, None, None]:
-        for h in self.hands:
+        for h in sorted(self.hands, key=lambda x: x.timestamp):
             yield h
 
     def __getitem__(self, item):
