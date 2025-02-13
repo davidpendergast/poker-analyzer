@@ -3,6 +3,7 @@ Program that parses logs from Pokernow and gives profit/loss breakdowns of vario
 
 ![Per-hand profit table](/screenshots/profit_chart.PNG?raw=true "Per-Hand Profit Table")
 
+
 Sample Output:
 
 ```
