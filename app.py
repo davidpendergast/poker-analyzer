@@ -11,12 +11,13 @@ import ui.sprites as sprites
 
 if __name__ == "__main__":
     pygame.init()
-    screen = utils.make_fancy_scaled_display(
-        const.GAME_DIMS,
-        scale_factor=1.,
-        outer_fill_color=(0, 0, 0),
-        extra_flags=pygame.RESIZABLE
-    )
+    screen = pygame.display.set_mode(const.GAME_DIMS, flags=pygame.RESIZABLE)
+    # screen = utils.make_fancy_scaled_display(
+    #     const.GAME_DIMS,
+    #     scale_factor=1.,
+    #     outer_fill_color=(0, 0, 0),
+    #     extra_flags=pygame.RESIZABLE
+    # )
     pygame.display.set_caption(const.NAME_OF_GAME)
 
     sprites.Sprites.initialize(utils.res_path("assets/fonts/m6x11.ttf"))
@@ -59,6 +60,11 @@ if __name__ == "__main__":
                     const.MOUSE_BUTTONS_HELD_THIS_FRAME.remove(e.button)
             elif e.type == pygame.WINDOWLEAVE:
                 const.MOUSE_XY = None
+
+        dims = screen.get_size()
+
+        leng = int(min(dims) * 0.9)
+        grid.set_rect([(dims[0] - leng) // 2, (dims[1] - leng) // 2, leng, leng])
 
         scene_manager.update(dt)
         scene_manager.render(screen)

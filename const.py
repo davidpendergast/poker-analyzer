@@ -3,7 +3,7 @@ import os
 import pygame
 
 NAME_OF_GAME = "Ghast Poker Analyzer"
-GAME_DIMS = (960, 540)
+GAME_DIMS = (960, 960)
 THRESH = 0.0001
 
 HERO_ID = 'Ghast @ k-xm91OpZ6'              # ID of the player to track.
