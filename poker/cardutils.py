@@ -2,6 +2,7 @@ import re
 import typing
 import functools
 import itertools
+import profiling
 
 RANKS = 'AKQJT98765432'
 SUITS = ['s', 'h', 'd', 'c']
@@ -57,6 +58,7 @@ class HandTypes:
     UNDERPAIR = "Underpair"
     NUTS = "The Nuts"
 
+
 class BoardTypes:
     MONOCHROME = "Monochrome"
     TWO_OF_A_SUIT = "Two of a Suit"
@@ -70,6 +72,7 @@ class BoardTypes:
     DOUBLE_PAIRED = "Double Paired"
     THREE_CONNECTED = "Three Connected"
     FOUR_CONNECTED = "Four Connected"
+
 
 def to_card_code(cards) -> str:
     """
@@ -294,6 +297,8 @@ def calc_hand(cards):
                     best.append(c)
             if len(best) == 5:
                 return HandTypes.STRAIGHT_FLUSH, best, []
+            elif len(best) == 4 and best[0][0] == '5' and by_suit[s][0][0] == 'A':
+                return HandTypes.STRAIGHT_FLUSH, best + [by_suit[s][0]], []  # wheel (5432A)
 
     # QUADS
     for rank_group in by_rank.values():
@@ -331,6 +336,8 @@ def calc_hand(cards):
             best_straight.append(c)
     if len(best_straight) == 5:
         return HandTypes.STRAIGHT, best_straight, []
+    elif len(best_straight) == 4 and best_straight[0][0] == '5' and cards[0][0] == 'A':
+        return HandTypes.STRAIGHT, best_straight + [cards[0]], []  # wheel (5432A)
 
     # TRIPS
     if len(trips) == 1:
@@ -389,23 +396,25 @@ def calc_wins(h_list, board) -> typing.List[float]:
 
 if __name__ == "__main__":
     tests = {
-        "str_flush":    ['Js', 'Qs', 'Qd', '3s', 'Ts', '9s', '8s'],
-        "quad_4s":      ['4h', '4d', 'Ks', '8c', '4c', '8s', '4c'],
-        "full_hs":      ['Js', 'Qs', 'Qd', '8h', 'Ts', '8c', '8s'],
-        # "full_hs2":     ['Js', 'Qs', 'Qd', '8h', 'Qh', '8c', '8s'],
-        "flush":        ['Js', 'Qs', 'Qd', '3s', '2s', '9s', '8s'],
-        "straight":     ['Js', 'Qs', 'Qd', '3s', 'Tc', '9c', '8s'],
-        "trip_3s":      ['3s', '3d', '4h', 'Ks', '2d', '3h', '7d'],
-        "twp_pair":     ['As', '3d', '4h', '7s', '2d', '3h', '7d'],
-        "pair_3s":      ['As', '3d', '4h', 'Ks', '2d', '3h', '7d'],
-        "ace_high":     ['Qc', '4h', '3s', 'As', 'Ts', '9c', '8s'],
+        # "str_flush":    ['Js', 'Qs', 'Qd', '3s', 'Ts', '9s', '8s'],
+        "wheel_stfsh":  ['5c', '3c', 'Ac', '7h', '4c', '2c', 'Tc'],
+        # "quad_4s":      ['4h', '4d', 'Ks', '8c', '4c', '8s', '4c'],
+        # "full_hs":      ['Js', 'Qs', 'Qd', '8h', 'Ts', '8c', '8s'],
+        # # "full_hs2":     ['Js', 'Qs', 'Qd', '8h', 'Qh', '8c', '8s'],
+        # "flush":        ['Js', 'Qs', 'Qd', '3s', '2s', '9s', '8s'],
+        # "straight":     ['Js', 'Qs', 'Qd', '3s', 'Tc', '9c', '8s'],
+        "wheel":        ['5h', '3c', 'Ad', '7h', '4c', '2s', 'Tc'],
+        # "trip_3s":      ['3s', '3d', '4h', 'Ks', '2d', '3h', '7d'],
+        # "twp_pair":     ['As', '3d', '4h', '7s', '2d', '3h', '7d'],
+        # "pair_3s":      ['As', '3d', '4h', 'Ks', '2d', '3h', '7d'],
+        # "ace_high":     ['Qc', '4h', '3s', 'As', 'Ts', '9c', '8s'],
     }
-    # evals = []
-    # for t in tests:
-    #     evals.append(EvalHand(tests[t][0:2], tests[t][2:]))
-    #     print(f"{t:<16}{evals[-1]}")
-    # evals.sort()
-    # print(evals)
+    evals = []
+    for t in tests:
+        evals.append(EvalHand(tests[t][0:2], tests[t][2:]))
+        print(f"{t:<16}{evals[-1]}")
+    evals.sort()
+    print(evals)
 
     evals = {
        # "AKs vs AKs": ((['As', 'Ks'], ['Ad', 'Kd']), []),
@@ -413,6 +422,7 @@ if __name__ == "__main__":
         "AKs vs AKo vs QQ": ((['As', 'Ks'], ['Ad', 'Kc'], ['Qs', 'Qc']), []),
     }
 
-    for k, v in evals.items():
-        print(f"{k}: {calc_equities(v[0], v[1])}")
-    print()
+    # profiling.start()
+    # for k, v in evals.items():
+    #     print(f"{k}: {calc_equities(v[0], v[1])}")
+    # profiling.stop()
