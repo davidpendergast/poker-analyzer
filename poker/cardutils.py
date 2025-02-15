@@ -1,5 +1,7 @@
 import re
 import typing
+import functools
+import itertools
 
 RANKS = 'AKQJT98765432'
 SUITS = ['s', 'h', 'd', 'c']
@@ -23,6 +25,18 @@ class HandTypes:
     TWO_PAIR = "Two Pair"
     PAIR = "Pair"
     HIGH_CARD = "High Card"
+
+    ORDERED_BY_STRENGTH = [
+        HIGH_CARD,
+        PAIR,
+        TWO_PAIR,
+        TRIPS,
+        STRAIGHT,
+        FLUSH,
+        FULL_HOUSE,
+        QUADS,
+        STRAIGHT_FLUSH
+    ]
 
     # Draws
     FLUSH_DRAW = "Flush Draw"
@@ -156,10 +170,31 @@ def cards_match_pattern(cards, pattern_code: str):
     return False
 
 
+def all_cards(ignore=()) -> typing.Generator[str, None, None]:
+    for r in RANKS:
+        for s in SUITS:
+            res = f"{r}{s}"
+            if res not in ignore:
+                yield res
+
+
 def sort_by_rank(cards: typing.List[str]) -> typing.List[str]:
     res = list(cards)
     res.sort(key=lambda c: RANKS.index(c[0]))
     return res
+
+
+def get_ranks(cards: typing.List[str]) -> typing.List[int]:
+    return list(map(lambda c: c[0], cards))
+
+
+def compare_by_ranks(cards1, cards2):
+    for c1, c2 in zip(cards1, cards2):
+        r1 = RANKS.index(c1[0])
+        r2 = RANKS.index(c2[0])
+        if r1 != r2:
+            return 1 if r1 < r2 else -1
+    return 0
 
 
 def split_by_suits(cards) -> typing.Dict[str, typing.List[str]]:
@@ -180,18 +215,62 @@ def split_by_ranks(cards) -> typing.Dict[str, typing.List[str]]:
     return res
 
 
-def fill_kickers(made_hand, cards):
-    res = list(made_hand)
+def find_kickers(made_hand, cards):
+    res = []
     for c in cards:
-        if len(res) >= 5:
+        if len(made_hand) + len(res) >= 5:
             return res
-        if c not in res:
+        if c not in made_hand:
             res.append(c)
     return res
 
 
+@functools.total_ordering
+class EvalHand:
+
+    def __init__(self, hole_cards, board):
+        self.hole_cards = tuple(hole_cards)
+        self.board = tuple(board)
+
+        made = calc_hand(list(hole_cards) + list(board))
+        self.made_type = made[0]
+        self.made_cards = made[1]
+        self.made_kickers = made[2]
+
+    def is_complete(self):
+        return len(self.board) >= 5
+
+    def __lt__(self, other: 'EvalHand'):
+        my_str = HandTypes.ORDERED_BY_STRENGTH.index(self.made_type)
+        other_str = HandTypes.ORDERED_BY_STRENGTH.index(other.made_type)
+        if my_str != other_str:
+            return my_str < other_str
+
+        cmp = compare_by_ranks(self.made_cards, other.made_cards)
+        if cmp != 0:
+            return cmp < 0
+
+        cmp = compare_by_ranks(self.made_kickers, other.made_kickers)
+        return cmp < 0
+
+    def __eq__(self, other: 'EvalHand'):
+        return not (self < other) and not (other < self)
+
+    def __hash__(self):
+        return hash((self.made_type, get_ranks(self.made_cards), get_ranks(self.made_kickers)))
+
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        res = f"{self.made_type} [{' '.join(self.made_cards)}]"
+        if len(self.made_kickers) > 0:
+            res = f"{res} ({' '.join(self.made_kickers)})"
+        return res
+
+
 def calc_hand(cards):
-    """returns: (HAND_TYPE, cards)
+    """returns: (HAND_TYPE, cards, kicker(s))
     """
     cards = sort_by_rank(cards)
     by_suit = split_by_suits(cards)
@@ -214,13 +293,13 @@ def calc_hand(cards):
                     best.clear()
                     best.append(c)
             if len(best) == 5:
-                return HandTypes.STRAIGHT_FLUSH, best
+                return HandTypes.STRAIGHT_FLUSH, best, []
 
     # QUADS
     for rank_group in by_rank.values():
         if len(rank_group) == 4:
             best = list(rank_group)
-            return HandTypes.QUADS, fill_kickers(best, cards)
+            return HandTypes.QUADS, best, find_kickers(best, cards)
 
     # FULL HOUSES
     if len(trips) >= 1 and (len(trips) + len(pairs)) >= 2:
@@ -229,12 +308,12 @@ def calc_hand(cards):
             best.extend(trips[1][0:2])
         else:
             best.extend(pairs[0])
-        return HandTypes.FULL_HOUSE, best
+        return HandTypes.FULL_HOUSE, best, []
 
     # FLUSHES
     for suit_group in by_suit.values():
         if len(suit_group) >= 5:
-            return HandTypes.FLUSH, suit_group[:5]
+            return HandTypes.FLUSH, suit_group[:5], []
 
     # STRAIGHTS
     best_straight = []
@@ -251,22 +330,61 @@ def calc_hand(cards):
             best_straight.clear()
             best_straight.append(c)
     if len(best_straight) == 5:
-        return HandTypes.STRAIGHT, best_straight
+        return HandTypes.STRAIGHT, best_straight, []
 
     # TRIPS
     if len(trips) == 1:
-        return HandTypes.TRIPS, fill_kickers(trips[0], cards)
+        return HandTypes.TRIPS, trips[0], find_kickers(trips[0], cards)
 
     # TWO_PAIRS
     if len(pairs) >= 2:
-        return HandTypes.TWO_PAIR, fill_kickers(pairs[0] + pairs[1], cards)
+        best = pairs[0] + pairs[1]
+        return HandTypes.TWO_PAIR, best, find_kickers(best, cards)
 
     # PAIRS
     if len(pairs) == 1:
-        return HandTypes.PAIR, fill_kickers(pairs[0], cards)
+        return HandTypes.PAIR, pairs[0], find_kickers(pairs[0], cards)
 
     # HIGH_CARDS
-    return HandTypes.HIGH_CARD, cards[0:5]
+    return HandTypes.HIGH_CARD, [cards[0]], cards[1:5]
+
+
+def calc_equities(h_list, board) -> typing.List[float]:
+    wins = calc_wins(h_list, board)
+    denom = sum(wins)
+    return [w / denom for w in wins]
+
+
+def calc_wins(h_list, board) -> typing.List[float]:
+    wins = [0] * len(h_list)
+    if len(board) >= 5:
+        evals = [(EvalHand(h, board), idx) for (idx, h) in enumerate(h_list)]
+        evals.sort(reverse=True)
+        winners = []
+        for i in range(len(evals)):
+            if i == 0 or evals[i][0] >= evals[i - 1][0]:
+                winners.append(evals[i])
+            else:
+                break
+        for _, idx in winners:
+            wins[idx] += 1 / len(winners)
+    else:
+        used_cards = set()
+        for (c1, c2) in h_list:
+            used_cards.add(c1)
+            used_cards.add(c2)
+        for c in board:
+            used_cards.add(c)
+
+        domain = list(all_cards(ignore=used_cards))
+        to_draw = 5 - len(board)
+
+        for draws in itertools.combinations(domain, to_draw):
+            w = calc_wins(h_list, board + list(draws))
+            for i in range(len(wins)):
+                wins[i] += w[i]
+
+    return wins
 
 
 if __name__ == "__main__":
@@ -274,7 +392,7 @@ if __name__ == "__main__":
         "str_flush":    ['Js', 'Qs', 'Qd', '3s', 'Ts', '9s', '8s'],
         "quad_4s":      ['4h', '4d', 'Ks', '8c', '4c', '8s', '4c'],
         "full_hs":      ['Js', 'Qs', 'Qd', '8h', 'Ts', '8c', '8s'],
-        "full_hs2":     ['Js', 'Qs', 'Qd', '8h', 'Qh', '8c', '8s'],
+        # "full_hs2":     ['Js', 'Qs', 'Qd', '8h', 'Qh', '8c', '8s'],
         "flush":        ['Js', 'Qs', 'Qd', '3s', '2s', '9s', '8s'],
         "straight":     ['Js', 'Qs', 'Qd', '3s', 'Tc', '9c', '8s'],
         "trip_3s":      ['3s', '3d', '4h', 'Ks', '2d', '3h', '7d'],
@@ -282,7 +400,19 @@ if __name__ == "__main__":
         "pair_3s":      ['As', '3d', '4h', 'Ks', '2d', '3h', '7d'],
         "ace_high":     ['Qc', '4h', '3s', 'As', 'Ts', '9c', '8s'],
     }
-    for t in tests:
-        print(f"{t:<16}{calc_hand(tests[t])}")
+    # evals = []
+    # for t in tests:
+    #     evals.append(EvalHand(tests[t][0:2], tests[t][2:]))
+    #     print(f"{t:<16}{evals[-1]}")
+    # evals.sort()
+    # print(evals)
 
+    evals = {
+       # "AKs vs AKs": ((['As', 'Ks'], ['Ad', 'Kd']), []),
+       #  "44 vs 44": ((['4s', '4d'], ['4c', '4h']), []),
+        "AKs vs AKo vs QQ": ((['As', 'Ks'], ['Ad', 'Kc'], ['Qs', 'Qc']), []),
+    }
+
+    for k, v in evals.items():
+        print(f"{k}: {calc_equities(v[0], v[1])}")
     print()
