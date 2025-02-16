@@ -1,3 +1,5 @@
+import math
+import random
 import re
 import typing
 import functools
@@ -183,6 +185,7 @@ def all_cards(ignore=()) -> typing.Generator[str, None, None]:
 
 def sort_by_rank(cards: typing.List[str]) -> typing.List[str]:
     res = list(cards)
+    res.sort(key=lambda c: SUITS.index(c[1]))  # for consistency
     res.sort(key=lambda c: RANKS.index(c[0]))
     return res
 
@@ -356,13 +359,13 @@ def calc_hand(cards):
     return HandTypes.HIGH_CARD, [cards[0]], cards[1:5]
 
 
-def calc_equities(h_list, board) -> typing.List[float]:
-    wins = calc_wins(h_list, board)
+def calc_equities(h_list, board, limit=float('inf')) -> typing.List[float]:
+    wins = calc_wins(h_list, board, limit=limit)
     denom = sum(wins)
     return [w / denom for w in wins]
 
 
-def calc_wins(h_list, board) -> typing.List[float]:
+def calc_wins(h_list, board, limit=float('inf')) -> typing.List[float]:
     wins = [0] * len(h_list)
     if len(board) >= 5:
         evals = [(EvalHand(h, board), idx) for (idx, h) in enumerate(h_list)]
@@ -386,7 +389,20 @@ def calc_wins(h_list, board) -> typing.List[float]:
         domain = list(all_cards(ignore=used_cards))
         to_draw = 5 - len(board)
 
-        for draws in itertools.combinations(domain, to_draw):
+        n_possible_outcomes = 1
+        for i in range(to_draw):
+            n_possible_outcomes *= (len(domain) - i)
+        n_possible_outcomes /= math.factorial(to_draw)  # order of draws doesn't matter
+
+        def gen():
+            if limit >= n_possible_outcomes:
+                for res in itertools.combinations(domain, to_draw):
+                    yield res
+            else:
+                for _ in range(int(limit)):
+                    yield random.sample(domain, to_draw)
+
+        for draws in gen():
             w = calc_wins(h_list, board + list(draws))
             for i in range(len(wins)):
                 wins[i] += w[i]

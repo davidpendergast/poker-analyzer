@@ -15,6 +15,7 @@ HERO_ID = 'Ghast @ k-xm91OpZ6'              # ID of the player to track.
 LOG_DOWNLOADER_ID = 'k-xm91OpZ6'    # ID of the player who downloaded the logs.
 
 LOG_DIR = "C:\\Users\\david\\Desktop\\Poker Notes\\logs"
+EQUITY_DB = "assets\\preflop_equity.json"
 # LOG_DIR = "testdata"
 
 IS_DEV = os.path.exists(".gitignore")
