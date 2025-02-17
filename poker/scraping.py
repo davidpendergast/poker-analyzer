@@ -23,7 +23,7 @@ def scrape_directory(hero_id, log_downloader_id, dirpath, desc="All Hands") -> h
         dates = group.dates()
 
         print(f"Scraped {len(group):<4} hand(s) from: {fname} {locale.currency(group.net_gain()):<9} "
-              f"({dates[0] if len(dates) > 0 else "?/?/????"})")
+              f"({dates[0] if len(dates) > 0 else '?/?/????'})")
     print()
 
     if len(all_hands) == 0:
@@ -72,6 +72,7 @@ def scrape(hero_id, log_downloader_id, logfilepath) -> typing.List[hands.Hand]:
                     res.append(hand)
     return res
 
+
 def _update_configs(configs, line):
     if old_new := _find_text(line[0], r'The game\'s small blind was changed from (.*) to (.*)\.', allow_fail=True):
         configs['sb_cost'] = float(old_new[1])
@@ -79,6 +80,7 @@ def _update_configs(configs, line):
         configs['bb_cost'] = float(old_new[1])
     elif old_new := _find_text(line[0], r'The game\'s ante was changed from (.*) to (.*)\.', allow_fail=True):
         configs['ante_cost'] = float(old_new[1])
+
 
 def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typing.Optional[hands.Hand]:
     intro_line = _pop_line_matching(lines, r'-- starting hand #(\d+).*')
@@ -189,6 +191,7 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
 
     return hand if hand.get_hero() is not None else None
 
+
 def _process_post_flop_actions(hand, lines, player_list, street):
     acts = []
 
@@ -230,6 +233,7 @@ def _process_post_flop_actions(hand, lines, player_list, street):
         lines.pop(0)
     return acts
 
+
 def _handle_player_shows_a_card(player_list, name, shows):
     cards = [_convert_card(shows)] if ", " not in shows else [_convert_card(shows.split(", ")[0]),
                                                               _convert_card(shows.split(", ")[1])]
@@ -246,6 +250,7 @@ def _handle_player_shows_a_card(player_list, name, shows):
         elif cards[0] not in old_cards:
             raise ValueError(f"Player's current cards are {old_cards} and showed {cards}?")
 
+
 def _convert_card(c: str):
     if c is None:
         return None
@@ -257,11 +262,13 @@ def _convert_card(c: str):
                 .replace('â™¥', 'h')
                 .replace('â™£', 'c'))
 
+
 def _get_player(players, player_name):
     for p in players:
         if p.name == player_name:
             return p
     return None
+
 
 def _assign_player_positions(players, sb_player_name, bb_player_name):
     pnames = [p.name for p in players]
@@ -271,6 +278,7 @@ def _assign_player_positions(players, sb_player_name, bb_player_name):
     players[bb_index].position = 1
     for i in range(len(players) - 2):
         players[(bb_index + i + 1) % len(players)].position = 2 + i
+
 
 def _pop_line_matching(lines, pattern, line_idx=0, allow_fail=False):
     discarded = []
@@ -284,8 +292,9 @@ def _pop_line_matching(lines, pattern, line_idx=0, allow_fail=False):
         lines.extend(discarded)
         return None
     else:
-        raise ValueError(f"Failed to find line matching pattern: {pattern}\n  "
-                        f"{'\n  '.join(list(str(s) for s in discarded))}")
+        msg_lines = '\n  '.join(list(str(s) for s in discarded))
+        raise ValueError(f"Failed to find line matching pattern: {pattern}\n  {msg_lines}")
+
 
 def _find_line_matching(lines, pattern, line_idx=0):
     for cur in lines:
@@ -294,6 +303,7 @@ def _find_line_matching(lines, pattern, line_idx=0):
             if res is not None:
                 return cur
     return None
+
 
 def _find_text(search_domain, pattern, allow_fail=False):
     """
@@ -315,6 +325,7 @@ def parse_utc_timestamp(timestamp: str) -> datetime.datetime:
     yyyy, mm, dd = date.split("-")
     hh, minute, ss = time.split(":")
     return datetime.datetime(int(yyyy), int(mm), int(dd), int(hh), int(minute), int(ss), tzinfo=datetime.timezone.utc).astimezone()
+
 
 if __name__ == "__main__":
     print(parse_utc_timestamp("2025-01-28T03:22:32.149Z").astimezone().strftime("%Y-%m-%d"))

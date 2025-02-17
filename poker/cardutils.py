@@ -16,6 +16,9 @@ BROADWAYS="KJ, KQ, QJ"
 SUITED_CONNECTORS = "32s-AKs"
 SUITED_GAPPERS = "42s-AQs"
 
+_CARD_CODES_ORDERED_BY_PREFLOP_EQUITY = []
+_CARD_CODES_ORDERED_BY_PREFLOP_EQUITY_WITH_DUPES = []
+
 
 class HandTypes:
     # Made Hands
@@ -102,6 +105,22 @@ def to_card_code(cards) -> str:
             return res + "o"  # Off-Suited
 
 
+def all_combos_of_card_code(cc):
+    if cc[0] == cc[1]:
+        for i1 in range(4):
+            for i2 in range(i1 + 1, 4):
+                yield (f"{cc[0]}{SUITS[i1]}", f"{cc[1]}{SUITS[i2]}")
+    else:
+        for s1 in SUITS:
+            for s2 in SUITS:
+                if s1 == s2 and cc[-1] == 'o':
+                    continue
+                elif s1 != s2 and cc[-1] == 's':
+                    continue
+                else:
+                    yield (f"{cc[0]}{s1}", f"{cc[1]}{s2}")
+
+
 def all_card_codes() -> str:
     for yrank in RANKS:
         for xrank in RANKS:
@@ -111,11 +130,57 @@ def all_card_codes() -> str:
                 yield to_card_code((f"{yrank}s", f"{xrank}s"))  # suited
 
 
+def number_of_combos(cc) -> int:
+    if cc[0] == cc[1]:
+        return 6
+    elif cc[-1] == 's':
+        return 4
+    elif cc[-1] == 'o':
+        return 12
+    elif cc == '??':
+        return -1
+    else:
+        return 16
+
+
+def get_best_preflop_card_codes(min_pcnt, max_pcnt=1.):
+    if len(_CARD_CODES_ORDERED_BY_PREFLOP_EQUITY) == 0:
+        import poker.preflop_db as db
+        _CARD_CODES_ORDERED_BY_PREFLOP_EQUITY.extend(all_card_codes())
+        _CARD_CODES_ORDERED_BY_PREFLOP_EQUITY.sort(key=lambda cc: db.get_avg_equity_vs_all(cc))
+        for cc in _CARD_CODES_ORDERED_BY_PREFLOP_EQUITY:
+            for _ in range(number_of_combos(cc)):
+                _CARD_CODES_ORDERED_BY_PREFLOP_EQUITY_WITH_DUPES.append(cc)
+
+    start_idx = int(min_pcnt * len(_CARD_CODES_ORDERED_BY_PREFLOP_EQUITY_WITH_DUPES))
+    end_idx = int(max_pcnt * len(_CARD_CODES_ORDERED_BY_PREFLOP_EQUITY_WITH_DUPES))
+    res = []
+    seen = set()
+    for i in range(start_idx, end_idx):
+        cc = _CARD_CODES_ORDERED_BY_PREFLOP_EQUITY_WITH_DUPES[i]
+        if cc not in seen:
+            res.append(cc)
+            seen.add(cc)
+    return res
+
+
 def cards_match_pattern(cards, pattern_code: str):
     patterns = re.split(r'[ ,]+', pattern_code.strip())
     for pattern in patterns:
         code = to_card_code(cards)
-        if "+" not in pattern and "-" not in pattern:
+        if "%" in pattern:
+            # "33%" (means best 33% of pre-flop hands)
+            # "20-60%" (means between 20-60% of pre-flop hands)
+            pattern = pattern.replace('%', '')
+            if "-" in pattern:
+                min_pcnt = float(pattern.split("-")[0])
+                max_pcnt = float(pattern.split("-")[1])
+            else:
+                min_pcnt = float(pattern)
+                max_pcnt = 1.0
+            return code in get_best_preflop_card_codes(min_pcnt, max_pcnt=max_pcnt)
+
+        elif "+" not in pattern and "-" not in pattern:
             if code == pattern:
                 return True  # exact match
             if (not pattern.endswith("s") and not pattern.endswith("o")
@@ -183,7 +248,7 @@ def all_cards(ignore=()) -> typing.Generator[str, None, None]:
                 yield res
 
 
-def sort_by_rank(cards: typing.List[str]) -> typing.List[str]:
+def sort_by_rank(cards: typing.Sequence[str]) -> typing.List[str]:
     res = list(cards)
     res.sort(key=lambda c: SUITS.index(c[1]))  # for consistency
     res.sort(key=lambda c: RANKS.index(c[0]))
@@ -229,6 +294,10 @@ def find_kickers(made_hand, cards):
         if c not in made_hand:
             res.append(c)
     return res
+
+
+def are_unique(cards):
+    return len(set(cards)) == len(cards)
 
 
 @functools.total_ordering
@@ -360,9 +429,15 @@ def calc_hand(cards):
 
 
 def calc_equities(h_list, board, limit=float('inf')) -> typing.List[float]:
-    wins = calc_wins(h_list, board, limit=limit)
-    denom = sum(wins)
-    return [w / denom for w in wins]
+    if len(h_list) == 2 and len(board) == 0:
+        # if it's a H2H pre-flop lookup, use cache
+        import poker.preflop_db as db
+        eq = db.get_equity(h_list[0], h_list[1])
+        return [eq, 1 - eq]
+    else:
+        wins = calc_wins(h_list, board, limit=limit)
+        denom = sum(wins)
+        return [w / denom for w in wins]
 
 
 def calc_wins(h_list, board, limit=float('inf')) -> typing.List[float]:

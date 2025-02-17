@@ -5,6 +5,7 @@ import pygame
 NAME_OF_GAME = "Ghast Poker Analyzer"
 GAME_DIMS = (960, 960)
 THRESH = 0.0001
+EQUITY_CALC_N_ITERS = 1000
 
 HERO_ID = 'Ghast @ k-xm91OpZ6'              # ID of the player to track.
 # HERO_ID = 'M1sf1re @ TNLfj8hFbJ'            # (for debug) M1sf1re
@@ -15,7 +16,7 @@ HERO_ID = 'Ghast @ k-xm91OpZ6'              # ID of the player to track.
 LOG_DOWNLOADER_ID = 'k-xm91OpZ6'    # ID of the player who downloaded the logs.
 
 LOG_DIR = "C:\\Users\\david\\Desktop\\Poker Notes\\logs"
-EQUITY_DB = "assets\\preflop_equity.json"
+EQUITY_DB = "assets\\preflop_equities_n1000.txt"
 # LOG_DIR = "testdata"
 
 IS_DEV = os.path.exists(".gitignore")
