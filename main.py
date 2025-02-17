@@ -3,11 +3,12 @@
 import typing
 import locale
 
-from poker import filters, actions, hands, scraping
+from poker import filters, actions, hands, scraping, preflop_db
 
 import const
 
 if __name__ == "__main__":
+    preflop_db.load_from_disk()
     all_hands = scraping.scrape_directory(const.HERO_ID, const.LOG_DOWNLOADER_ID, const.LOG_DIR)
 
     print(f"-- Summary of {const.HERO_ID} --")
@@ -55,6 +56,11 @@ if __name__ == "__main__":
         "Mid Pairs (TT-77)": filters.HeroCardFilter("77-TT"),
         "Low Pairs (66-22)": filters.HeroCardFilter("22-66"),
 
+        "Best 15%": filters.HeroCardFilter("15%"),
+        "Best 33%": filters.HeroCardFilter("33%"),
+        "Middle 33%": filters.HeroCardFilter("66-33%"),
+        "Worst 33%": filters.HeroCardFilter("100-66%"),
+
         "Broadways (KQ KJ QJ)": filters.HeroCardFilter("KQ, KJ, QJ"),
 
         "High S Connectors (AK-JTs)": filters.HeroCardFilter("AK-JTs"),
@@ -87,9 +93,9 @@ if __name__ == "__main__":
     for res in custom_results:
         if len(res) > 0:  # skip categories with zero hands
             print(res.summary())
-            if res.desc == "AA":
-                for h in res:
-                    print(f"  {h}")
+            # if res.desc == "Middle 33%":
+            #     for h in res:
+            #         print(f"  {h}")
     print()
 
     print("-- Per-Hand Stats --")

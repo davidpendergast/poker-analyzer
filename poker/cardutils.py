@@ -170,13 +170,13 @@ def cards_match_pattern(cards, pattern_code: str):
         code = to_card_code(cards)
         if "%" in pattern:
             # "33%" (means best 33% of pre-flop hands)
-            # "20-60%" (means between 20-60% of pre-flop hands)
+            # "60-20%" (means best 60-20% of pre-flop hands)
             pattern = pattern.replace('%', '')
             if "-" in pattern:
-                min_pcnt = float(pattern.split("-")[0])
-                max_pcnt = float(pattern.split("-")[1])
+                min_pcnt = 1 - float(pattern.split("-")[0]) / 100.
+                max_pcnt = 1 - float(pattern.split("-")[1]) / 100.
             else:
-                min_pcnt = float(pattern)
+                min_pcnt = 1 - float(pattern) / 100.
                 max_pcnt = 1.0
             return code in get_best_preflop_card_codes(min_pcnt, max_pcnt=max_pcnt)
 
