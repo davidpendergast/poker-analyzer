@@ -55,6 +55,16 @@ class HeroSawStreet(Filter):
         return hand.hero_got_to_street(self.street)
 
 
+class EveryoneAndHeroAllInBy(Filter):
+
+    def __init__(self, street):
+        super().__init__()
+        self.street = street
+
+    def test(self, hand: 'hands.Hand') -> bool:
+        return hand.is_everyone_all_in(player_id=hand.hero_id, street=self.street)
+
+
 class HeroVPIP(Filter):
 
     def __init__(self, street=actions.PRE_FLOP):

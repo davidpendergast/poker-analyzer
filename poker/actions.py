@@ -6,6 +6,11 @@ FLOP = "flop"
 TURN = "turn"
 RIVER = "river"
 SHOWDOWN = "showdown"
+ORDERED_STREETS = [PRE_FLOP,
+                   FLOP,
+                   TURN,
+                   RIVER,
+                   SHOWDOWN]
 
 ANY = "any"
 POST_FLOP = "post-flop"
@@ -13,7 +18,7 @@ BEFORE_SHOWDOWN = "pre-showdown"
 
 
 def unpack_street(street):
-    if isinstance(street, tuple):
+    if isinstance(street, tuple) or isinstance(street, list):
         return street
     elif street == ANY:
         return PRE_FLOP, FLOP, TURN, RIVER, SHOWDOWN
@@ -23,6 +28,24 @@ def unpack_street(street):
         return PRE_FLOP, FLOP, TURN, RIVER
     else:
         return (street,)
+
+
+def street_range(first, last):
+    if first is None:
+        start_idx = 0
+    else:
+        first = unpack_street(first)[0]
+        start_idx = ORDERED_STREETS.index(first)
+    if last is None:
+        end_idx = 0
+    else:
+        last = unpack_street(last)[-1]
+        end_idx = ORDERED_STREETS.index(last) + 1
+
+    if end_idx < start_idx:
+        return []
+    else:
+        return ORDERED_STREETS[start_idx:end_idx]
 
 
 # Pure Action Types

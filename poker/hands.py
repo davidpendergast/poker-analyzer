@@ -168,6 +168,44 @@ class Hand:
     def is_multiway(self, street=actions.FLOP):
         return len(self.players_involved_at_street(street)) > 2
 
+    def is_everyone_all_in(self, player_id=None, street=actions.RIVER):
+        """
+        Returns true if no more player actions can be taken because everyone is all-in
+        or called an all-in (i.e. it's a cards-up "run-out" situation).
+        :param street: Street by which the all-ins/calls occurred (optional).
+        :param player_id: Only count it if this player was involved (optional)
+        """
+        all_in_players = set()
+        active_players = set()
+        folded_players = set()
+
+        for a in self.all_actions(street=actions.street_range(None, street)):
+            if a.is_fold():
+                if player_id is not None and Player.names_eq(player_id, a.player_id):
+                    return False  # player we care about folded, break early
+                folded_players.add(a.player_id)
+                if a.player_id in active_players:
+                    active_players.remove(a.player_id)
+            elif a.is_all_in():
+                all_in_players.add(a.player_id)
+                if a.player_id in active_players:
+                    active_players.remove(a.player_id)
+            elif a.player_id not in folded_players:
+                active_players.add(a.player_id)
+
+        if ((len(active_players) == 0 and len(all_in_players) > 1)
+                or (len(active_players) == 1 and len(all_in_players) > 0)):
+                    if player_id is not None:
+                        for pid in active_players:
+                            if Player.names_eq(player_id, pid):
+                                return True
+                        for pid in all_in_players:
+                            if Player.names_eq(player_id, pid):
+                                return True
+                        return False
+                    else:
+                        return True
+
     def players_involved_at_street(self, street) -> typing.Set[str]:
         streets = actions.unpack_street(street)
         in_hand_pre = set()

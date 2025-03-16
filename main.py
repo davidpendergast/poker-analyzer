@@ -84,7 +84,10 @@ if __name__ == "__main__":
         "4-way+ Flops": filters.HeroSawStreet(actions.FLOP) & filters.Multiway(actions.FLOP, at_least=4),
 
         "Gets to Showdown": filters.HeroSawStreet(actions.SHOWDOWN),
-        "Doesn't get to Showdown": filters.HeroVPIP() & ~filters.HeroSawStreet(actions.SHOWDOWN)
+        "Doesn't get to Showdown": filters.HeroVPIP() & ~filters.HeroSawStreet(actions.SHOWDOWN),
+
+        "All-in Pre-Flop": filters.EveryoneAndHeroAllInBy(actions.PRE_FLOP),
+        "All-in Before River": filters.EveryoneAndHeroAllInBy(actions.TURN),
     }
 
     custom_results = [all_hands.filter(custom_filters[f], desc=f) for f in custom_filters]
