@@ -10,6 +10,9 @@ import const
 if __name__ == "__main__":
     preflop_db.load_from_disk()
     all_hands = scraping.scrape_directory(const.HERO_ID, const.LOG_DOWNLOADER_ID, const.LOG_DIR)
+    if const.N_MOST_RECENT_SESSIONS_TO_SCRAPE > 0:
+        all_hands = all_hands.most_recent_sessions(const.N_MOST_RECENT_SESSIONS_TO_SCRAPE, desc=all_hands.desc)
+        print(f"** Analyzing last {all_hands.session_count()} session(s) **\n")
 
     print(f"-- Summary of {const.HERO_ID} --")
     print(f"Hands:        {len(all_hands)} (in {all_hands.session_count()} sessions)")
@@ -31,6 +34,13 @@ if __name__ == "__main__":
     print(f"Edge:         {sign}{all_hands.net_bbs() / len(all_hands):.2f}bb per hand, "
                         f"{sign}{locale.currency(all_hands.net_gain() / all_hands.total_duration() * 3600.)} "
                         f"per hour (in {round(all_hands.total_duration() / 3600.)} hours)")
+    print()
+
+    print("-- Player Breakdowns --")
+    known_players = all_hands.players()
+    known_players.sort(key=lambda pid: all_hands.net_gain(player_id=pid), reverse=True)
+    for pid in known_players:
+        print(all_hands.summary(player_id=pid))
     print()
 
     print("-- Situational Breakdowns --")

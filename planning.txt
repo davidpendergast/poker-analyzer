@@ -1,0 +1,5 @@
+Issues:
+- Only scrapes hands hero is in
+
+To Do:
+- Calculate All-In Adjusted equities

@@ -46,8 +46,8 @@ def scrape(hero_id, log_downloader_id, logfilepath) -> typing.List[hands.Hand]:
     res = []
     with open(logfilepath, mode='r') as csvfile:
         reader = csv.reader(csvfile)
-        lines = [l for l in reader if len(l) > 0]
-        lines.reverse()  # pokernow logs go from newest to oldest
+        lines = [l for l in reader if (len(l) == 3 and l != ["entry", "at", "order"])]
+        lines.sort(key=lambda l: int(l[2]))  # sort lines by "order" field
 
         configs = {
             "logfile": os.path.basename(logfilepath),
@@ -93,6 +93,11 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
         # or the game ending while paused. Not much we can do.
         return None
     end_timestamp = parse_utc_timestamp(end_line[1])
+
+    # this sometimes gets logged before final hand-shows, just move it to the end for simplicity
+    lines.sort(key=lambda l: 1 if "-- ending hand #" in l[0] else 0)
+
+    final_collect_line_order = int(_find_line_matching(lines, r'"(.*)" collected ([\d\.]+) from pot.*', first=False)[2])
 
     players_line = _pop_line_matching(lines, r'Player stacks: (.*)')
     player_list = []
@@ -152,7 +157,7 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
             return hand if hand.get_hero() is not None else None
         elif name_shows := _find_text(line[0], r'"(.*)" shows a (.*)\.', allow_fail=True):
             name, shows = name_shows[0], name_shows[1]
-            _handle_player_shows_a_card(player_list, name, shows)
+            _handle_player_shows_a_card(player_list, name, shows, voluntary=int(line[2]) > final_collect_line_order)
         elif _find_text(line[0], r'Flop:[ ]+.*', allow_fail=True) is not None:
             break
 
@@ -169,7 +174,7 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
     else:
         return hand if hand.get_hero() is not None else None
 
-    hand.flop_actions = _process_post_flop_actions(hand, lines, player_list, actions.FLOP)
+    hand.flop_actions = _process_post_flop_actions(hand, lines, player_list, actions.FLOP, final_collect_line_order)
 
     turn_line = _pop_line_matching(lines, r'Turn:[ ]+.*', allow_fail=True)
     if turn_line is not None:
@@ -178,7 +183,7 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
     else:
         return hand if hand.get_hero() is not None else None
 
-    hand.turn_actions = _process_post_flop_actions(hand, lines, player_list, actions.TURN)
+    hand.turn_actions = _process_post_flop_actions(hand, lines, player_list, actions.TURN, final_collect_line_order)
 
     river_line = _pop_line_matching(lines, r'River:[ ]+.*', allow_fail=True)
     if river_line is not None:
@@ -187,12 +192,12 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
     else:
         return hand if hand.get_hero() is not None else None
 
-    hand.river_actions = _process_post_flop_actions(hand, lines, player_list, actions.RIVER)
+    hand.river_actions = _process_post_flop_actions(hand, lines, player_list, actions.RIVER, final_collect_line_order)
 
     return hand if hand.get_hero() is not None else None
 
 
-def _process_post_flop_actions(hand, lines, player_list, street):
+def _process_post_flop_actions(hand, lines, player_list, street, final_collect_line_order):
     acts = []
 
     while len(lines) > 0:
@@ -223,7 +228,7 @@ def _process_post_flop_actions(hand, lines, player_list, street):
             _get_player(hand.players, name).gain += amt
         elif name_shows := _find_text(line[0], r'"(.*)" shows a (.*)\.', allow_fail=True):
             name, shows = name_shows[0], name_shows[1]
-            _handle_player_shows_a_card(player_list, name, shows)
+            _handle_player_shows_a_card(player_list, name, shows, voluntary=int(line[2]) > final_collect_line_order)
         elif street == actions.FLOP and _find_text(line[0], r'Turn:[ ]+.*', allow_fail=True) is not None:
             break
         elif street == actions.TURN and _find_text(line[0], r'River:[ ]+.*', allow_fail=True) is not None:
@@ -234,19 +239,29 @@ def _process_post_flop_actions(hand, lines, player_list, street):
     return acts
 
 
-def _handle_player_shows_a_card(player_list, name, shows):
+def _handle_player_shows_a_card(player_list, name, shows, voluntary=False):
     cards = [_convert_card(shows)] if ", " not in shows else [_convert_card(shows.split(", ")[0]),
                                                               _convert_card(shows.split(", ")[1])]
+    player = _get_player(player_list, name)
     if len(cards) == 2:
         # player showed both cards at the same time
-        _get_player(player_list, name).cards = tuple(cards)
+        player.cards = tuple(cards)
+        player.showed_cards = 2
+        if voluntary:
+            player.voluntarily_showed_cards = 2
     else:
         # player only showed one card
-        old_cards = _get_player(player_list, name).cards
+        old_cards = player.cards
         if old_cards == (None, None):
-            _get_player(player_list, name).cards = (cards[0], None)
+            player.cards = (cards[0], None)
+            player.showed_cards = 1
+            if voluntary:
+                player.voluntarily_showed_cards = 1
         elif old_cards[1] is None:
-            _get_player(player_list, name).cards = (old_cards[0], cards[0])
+            player.cards = (old_cards[0], cards[0])
+            player.showed_cards = 2
+            if voluntary:
+                player.voluntarily_showed_cards = 2
         elif cards[0] not in old_cards:
             raise ValueError(f"Player's current cards are {old_cards} and showed {cards}?")
 
@@ -263,15 +278,15 @@ def _convert_card(c: str):
                 .replace('â™£', 'c'))
 
 
-def _get_player(players, player_name):
+def _get_player(players, player_name) -> typing.Optional[hands.Player]:
     for p in players:
-        if p.name == player_name:
+        if p.name_and_id == player_name:
             return p
     return None
 
 
 def _assign_player_positions(players, sb_player_name, bb_player_name):
-    pnames = [p.name for p in players]
+    pnames = [p.name_and_id for p in players]
     sb_index = pnames.index(sb_player_name)
     bb_index = pnames.index(bb_player_name)
     players[sb_index].position = 0
@@ -296,8 +311,9 @@ def _pop_line_matching(lines, pattern, line_idx=0, allow_fail=False):
         raise ValueError(f"Failed to find line matching pattern: {pattern}\n  {msg_lines}")
 
 
-def _find_line_matching(lines, pattern, line_idx=0):
-    for cur in lines:
+def _find_line_matching(lines, pattern, line_idx=0, first=True):
+    ordered_lines = lines if first else reversed(lines)
+    for cur in ordered_lines:
         if line_idx < len(cur):
             res = _find_text(cur[line_idx], pattern, allow_fail=True)
             if res is not None:

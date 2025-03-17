@@ -8,14 +8,21 @@ from poker import cardutils, actions
 
 class Hand:
 
-    def __init__(self, timestamp: datetime.datetime, end_timestamp: datetime.datetime, configs, hand_idx, hero_id, players):
+    def __init__(self,
+                 timestamp: datetime.datetime,
+                 end_timestamp: datetime.datetime,
+                 configs,
+                 hand_idx: int,
+                 hero_id: str,
+                 players: typing.List['Player']):
+
         self.timestamp = timestamp
         self.end_timestamp = end_timestamp
         self.configs = configs
         self.hand_idx = hand_idx
         self.hero_id = hero_id
 
-        self.players = players
+        self.players: typing.List['Player'] = players
         self.board = []
 
         self.pre_flop_actions = []
@@ -84,7 +91,10 @@ class Hand:
                     yield a
 
     def did_hero_vpip(self, street=actions.PRE_FLOP):
-        for a in self.all_actions(player_id=self.hero_id, street=street):
+        return self.did_player_vpip(None, street=street)
+
+    def did_player_vpip(self, player_id, street=actions.PRE_FLOP):
+        for a in self.all_actions(player_id=player_id or self.hero_id, street=street):
             if a.is_vpip():
                 return True
             if a.action_type == actions.FOLD:
@@ -112,6 +122,7 @@ class Hand:
                     return True, a.action_type  # player had opportunity but called or folded
                 else:
                     return False, None  # player didn't have opportunity
+        return False, None  # player wasn't in the hand
 
     def get_action_seq_string(self, street=actions.PRE_FLOP):
         res = []
@@ -154,11 +165,18 @@ class Hand:
                 return True
 
     def did_hero_win(self):
-        return self.get_hero().net() > 0
+        return self.did_player_win(None)
+
+    def did_player_win(self, player_id):
+        p = self.get_player(player_id)
+        return p is not None and p.net() > 0
 
     def hero_got_to_street(self, street):
+        return self.player_got_to_street(None, street)
+
+    def player_got_to_street(self, player_id, street):
         for n in self.players_involved_at_street(street):
-            if Player.names_eq(n, self.hero_id):
+            if Player.names_eq(n, player_id or self.hero_id):
                 return True
         return False
 
@@ -172,8 +190,8 @@ class Hand:
         """
         Returns true if no more player actions can be taken because everyone is all-in
         or called an all-in (i.e. it's a cards-up "run-out" situation).
-        :param street: Street by which the all-ins/calls occurred (optional).
         :param player_id: Only count it if this player was involved (optional)
+        :param street: Street by which the all-ins/calls occurred (optional).
         """
         all_in_players = set()
         active_players = set()
@@ -205,6 +223,7 @@ class Hand:
                         return False
                     else:
                         return True
+        return False
 
     def players_involved_at_street(self, street) -> typing.Set[str]:
         streets = actions.unpack_street(street)
@@ -363,6 +382,8 @@ class Hand:
         return self.configs['ante_cost']
 
     def get_player(self, name) -> 'typing.Optional[Player]':
+        if name is None:
+            return self.get_hero()
         for p in self.players:
             if p.matches_name(name):
                 return p
@@ -379,7 +400,7 @@ class Hand:
 class Player:
 
     def __init__(self, name, stack, position, cards):
-        self.name = name
+        self.name_and_id = name
         self.stack = stack
         self.position = position
         self.cards = cards
@@ -391,6 +412,9 @@ class Player:
             "river": 0
         }
         self.gain = 0
+
+        self.showed_cards = 0
+        self.voluntarily_showed_cards = 0
 
     @staticmethod
     def names_eq(id1, id2) -> bool:
@@ -406,17 +430,31 @@ class Player:
             return id1 == id2
 
     def matches_name(self, name):
-        return Player.names_eq(self.name, name)
+        return Player.names_eq(self.name_and_id, name)
+
+    def known_cards(self) -> int:
+        res = 0
+        res += 1 if self.cards[0] is not None else 0
+        res += 1 if self.cards[1] is not None else 0
+        return res
 
     def net(self):
         return sum(self.street_nets.values()) + self.gain
 
     def get_id(self):
-        if self.name is not None and '@' in self.name:
-            return self.name[self.name.rindex('@') + 2:]
+        if self.name_and_id is not None and ' @ ' in self.name_and_id:
+            return self.name_and_id.split(' @ ')[1]
+        else:
+            return None
+
+    def get_name(self):
+        if self.name_and_id is not None and ' @ ' in self.name_and_id:
+            return self.name_and_id.split(' @ ')[0]
+        else:
+            return None
 
     def summary_str(self) -> str:
-        n = self.name.split(" @ ")[0]
+        n = self.name_and_id.split(" @ ")[0]
         net = self.net()
         hand = str(self.cards[0] or "??") + str(self.cards[1] or "??")
         return f"{n} [{hand}] ({net:.2f})"
@@ -431,7 +469,7 @@ class Player:
                 f"{self.cards[1] if self.cards[1] is not None else '??'}")
 
     def __repr__(self):
-        return f"{type(self).__name__}({self.name=}, {self.stack=}, {self.position=}, {self.cards=}, {self.net=})"
+        return f"{type(self).__name__}({self.name_and_id=}, {self.stack=}, {self.position=}, {self.cards=}, {self.net=})"
 
 
 class HandGroup(collections.abc.Sequence):
@@ -464,6 +502,22 @@ class HandGroup(collections.abc.Sequence):
                 res.append(datestr)
         return res
 
+    def players(self) -> typing.List[str]:
+        """
+        returns list of 'PlayerName @ PlayerID' found in this hand group, with PlayerName being
+        the most commonly-used alias for that player.
+        """
+        ids = {}  # ids -> list of names used
+        for h in self.hands:
+            for p in h.players:
+                p_id = p.get_id()
+                p_name = p.get_name()
+                if p_id not in ids:
+                    ids[p_id] = collections.Counter()
+                ids[p_id].update([p_name])
+
+        return [f"{ids[p_id].most_common(1)[0][0]} @ {p_id}" for p_id in ids]
+
     def total_duration(self) -> float:
         """returns: total sum of the wall-clock durations of the hands in this group, in seconds"""
         res = 0
@@ -487,25 +541,31 @@ class HandGroup(collections.abc.Sequence):
         new_hands = [h for h in self.hands if filter.test(h)]
         return HandGroup(new_hands, desc=desc if desc is not None else f"F({self.desc})")
 
-    def vpip_pcnt(self, street=actions.PRE_FLOP):
+    def vpip_pcnt(self, player_id=None, street=actions.PRE_FLOP):
         if len(self) == 0:
             return 0
         else:
-            cnt = 0
+            vpip_cnt = 0
+            hand_cnt = 0
             for h in self.hands:
-                if h.did_hero_vpip(street=street):
-                    cnt += 1
-            return cnt / len(self)
+                if h.get_player(player_id) is not None:
+                    hand_cnt += 1
+                if h.did_player_vpip(player_id, street=street):
+                    vpip_cnt += 1
+            if hand_cnt == 0:
+                return 0
+            else:
+                return vpip_cnt / hand_cnt
 
-    def get_3bet_pcnt(self):
+    def get_3bet_pcnt(self, player_id=None):
         """ returns: number of 3bets / number of opportunities to 3bet"""
-        if len(self) == 0:
+        if self.hands_played(player_id) == 0:
             return 0
         else:
             had_opportunity = 0
             cnt = 0
             for h in self.hands:
-                opp, res = h.did_player_3bet_pre(h.hero_id)
+                opp, res = h.did_player_3bet_pre(player_id or h.hero_id)
                 if opp:
                     had_opportunity += 1
                     if res == actions.RAISE:
@@ -515,53 +575,100 @@ class HandGroup(collections.abc.Sequence):
             else:
                 return cnt / had_opportunity
 
-    def net_gain(self):
-        res = 0
+    def get_saw_street_pcnt(self, player_id=None, street=actions.FLOP):
+        saw_street = 0
+        played_hands = 0
         for h in self.hands:
-            res += h.get_hero().net()
-        return res
+            p = h.get_player(player_id)
+            if p is not None:
+                played_hands += 1
+                if h.player_got_to_street(player_id, street=street):
+                    saw_street += 1
+        return saw_street / played_hands if played_hands > 0 else 0
 
-    def total_flux(self):
-        res = 0
+    def get_voluntary_show_pcnt(self, player_id=None, after_vpip=True):
+        had_opportunity = 0
+        did_show = 0
         for h in self.hands:
-            res += abs(h.get_hero().net())
-        return res
-
-    def avg_gain_per_play(self):
-        if len(self) == 0:
+            p = h.get_player(player_id)
+            if p is not None:
+                if not after_vpip or h.did_player_vpip(player_id, street=actions.ANY):
+                    if p.showed_cards == 2 and p.voluntarily_showed_cards == 0:
+                        pass  # player was compelled to show
+                    else:
+                        had_opportunity += 2
+                        did_show += p.voluntarily_showed_cards
+        if had_opportunity == 0:
             return 0
         else:
-            return self.net_gain() / len(self)
+            return did_show / had_opportunity
 
-    def net_bbs(self):
+    def net_gain(self, player_id=None):
         res = 0
         for h in self.hands:
-            res += h.get_hero().net() / h.get_bb_cost()
+            p = h.get_player(player_id)
+            if p is not None:
+                res += p.net()
         return res
 
-    def avg_bbs_per_play(self):
-        if len(self) == 0:
+    def total_flux(self, player_id=None):
+        res = 0
+        for h in self.hands:
+            p = h.get_player(player_id)
+            if p is not None:
+                res += abs(p.net())
+        return res
+
+    def hands_played(self, player_id=None):
+        if player_id is None:
+            return len(self)
+        else:
+            return len([h for h in self.hands if h.get_player(player_id) is not None])
+
+    def avg_gain_per_play(self, player_id=None):
+        hands_played = self.hands_played(player_id=player_id)
+        if hands_played == 0:
             return 0
         else:
-            return self.net_bbs() / len(self)
+            return self.net_gain(player_id=player_id) / hands_played
 
-    def median_bbs(self):
-        if len(self) == 0:
+    def net_bbs(self, player_id=None):
+        res = 0
+        for h in self.hands:
+            p = h.get_player(player_id)
+            if p is not None:
+                res += p.net() / h.get_bb_cost()
+        return res
+
+    def avg_bbs_per_play(self, player_id=None):
+        hands_played = self.hands_played(player_id=player_id)
+        if hands_played == 0:
             return 0
         else:
-            bbs = [h.net() / h.get_bb_cost() for h in self.hands]
-            bbs.sort()
-            if len(bbs) % 2 == 0:
-                return (bbs[len(bbs) // 2] + bbs[len(bbs) // 2 + 1]) / 2
-            else:
-                return bbs[len(bbs) // 2]
+            return self.net_bbs(player_id=player_id) / hands_played
 
-    def win_pcnt(self, after_vpip=True):
+    def win_pcnt(self, player_id=None, after_vpip=True):
         wins = 0
         losses = 0
         for h in self.hands:
-            if not after_vpip or h.did_hero_vpip(street=actions.ANY):
-                if h.did_hero_win():
+            p = h.get_player(player_id)
+            if p is not None:
+                if not after_vpip or h.did_player_vpip(player_id, street=actions.ANY):
+                    if h.did_player_win(player_id):
+                        wins += 1
+                    else:
+                        losses += 1
+        if wins + losses == 0:
+            return 0
+        else:
+            return wins / (wins + losses)
+
+    def win_at_showdown_pcnt(self, player_id=None):
+        wins = 0
+        losses = 0
+        for h in self.hands:
+            if h.player_got_to_street(player_id, actions.SHOWDOWN):
+                if h.did_player_win(player_id=player_id):
                     wins += 1
                 else:
                     losses += 1
@@ -570,43 +677,71 @@ class HandGroup(collections.abc.Sequence):
         else:
             return wins / (wins + losses)
 
-    def win_at_showdown_pcnt(self):
-        wins = 0
-        losses = 0
-        for h in self.hands:
-            if h.hero_got_to_street(actions.SHOWDOWN):
-                if h.did_hero_win():
-                    wins += 1
-                else:
-                    losses += 1
-        if wins + losses == 0:
-            return 0
-        else:
-            return wins / (wins + losses)
-
-    def session_count(self):
+    def session_count(self) -> int:
         sessions = set()
         for h in self.hands:
             if 'logfile' in h.configs and h.configs['logfile'] is not None:
                 sessions.add(h.configs['logfile'])
         return len(sessions)
 
-    def summary(self):
-        desc = f"{self.desc}: "
-        avg_bbs = f"{self.avg_bbs_per_play():.1f}bb"
-        total = f"{locale.currency(self.net_gain())}"
-        in_x_hands = f"in {len(self)} hand(s)"
-        vpip_pcnt = f"{min(99.9, self.vpip_pcnt() * 100):.1f}%"
-        win_pcnt = f"{min(99.9, self.win_pcnt() * 100):.1f}%"
-        win_at_sd_pcnt = f"{min(99.9, self.win_at_showdown_pcnt() * 100):.1f}%"
-        return (f"{desc:<32}{avg_bbs:<12}{total:<12}{in_x_hands:<16}"
-                f"[VPIP={vpip_pcnt:>5}, WIN={win_pcnt:>5}, WaSD={win_at_sd_pcnt:>5}]")
+    def most_recent_sessions(self, n, desc=None) -> 'HandGroup':
+        if n < 0:
+            return self
+        desc = desc or f"{self.desc} (last {n} session(s))"
+        if n == 0:
+            return HandGroup([], desc=desc)
+        else:
+            all_sessions = {}
+            for h in self.hands:
+                if 'logfile' in h.configs and h.configs['logfile'] is not None:
+                    logfile = h.configs['logfile']
+                    if logfile not in all_sessions:
+                        all_sessions[logfile] = h.timestamp
+            sorted_sessions = [k for k in all_sessions.keys()]
+            sorted_sessions.sort(key=lambda k: all_sessions[k], reverse=True)
+            if len(sorted_sessions) <= n:
+                return self
+            else:
+                sessions = sorted_sessions[:n]
+                hands_to_keep = []
+                for h in self.hands:
+                    if 'logfile' in h.configs and h.configs['logfile'] in sessions:
+                        hands_to_keep.append(h)
+                return HandGroup(hands_to_keep, desc=desc)
 
-    def get_hole_card_freqs(self):
+    def summary(self, player_id=None):
+        pid = ""
+        if player_id is not None:
+            p_name = player_id.split(' @ ')[0] if ' @ ' in player_id else player_id
+            if len(p_name) > 18:
+                p_name = p_name[:15] + "..."
+            pid = f" ({p_name})"
+
+        desc = f"{self.desc}{pid}: "
+        avg_bbs = f"{self.avg_bbs_per_play(player_id=player_id):.1f}bb"
+        total = f"{locale.currency(self.net_gain(player_id=player_id))}"
+        in_x_hands = f"in {self.hands_played(player_id=player_id)} hand(s)"
+
+        vpip_pcnt = cardutils.format_pcnt(self.vpip_pcnt(player_id=player_id))
+        win_pcnt = cardutils.format_pcnt(self.win_pcnt(player_id=player_id))
+        win_at_sd_pcnt = cardutils.format_pcnt(self.win_at_showdown_pcnt(player_id=player_id))
+        three_bet_pcnt = cardutils.format_pcnt(self.get_3bet_pcnt(player_id=player_id))
+        saw_flop = cardutils.format_pcnt(self.get_saw_street_pcnt(player_id=player_id, street=actions.FLOP))
+        show_pcnt = cardutils.format_pcnt(self.get_voluntary_show_pcnt(player_id=player_id, after_vpip=True))
+
+        return (f"{desc:<32}{avg_bbs:<12}{total:<12}{in_x_hands:<18}"
+                f"[VPIP={vpip_pcnt:>5}, 3BET={three_bet_pcnt}, SAW_FLOP={saw_flop}, WIN={win_pcnt}, WaSD={win_at_sd_pcnt}, SHOW={show_pcnt}]")
+
+    def get_hole_card_freqs(self, player_id=None):
         res = {}
         for h in self.hands:
-            cc = h.get_hero().get_card_code()
-            if cc not in res:
-                res[cc] = 0
-            res[cc] += 1
+            p = h.get_player(player_id)
+            if p is not None and p.known_cards() == 2:
+                cc = p.get_card_code()
+                if cc not in res:
+                    res[cc] = 0
+                res[cc] += 1
         return res
+
+    def get_player_stats(self, player_id):
+        pass

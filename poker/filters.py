@@ -3,9 +3,6 @@ import typing
 from poker import cardutils, actions, hands
 
 
-def hero_saw_flop(hand) -> bool:
-    return hand.hero_got_to_street(actions.FLOP)
-
 class Filter:
 
     def __init__(self):
@@ -33,6 +30,7 @@ class HeroCardFilter(Filter):
     def test(self, hand: hands.Hand) -> bool:
         hero = hand.get_hero()
         return cardutils.cards_match_pattern(hero.cards, self.pattern)
+
 
 class HeroCardsKnown(Filter):
 

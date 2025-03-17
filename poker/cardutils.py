@@ -5,6 +5,7 @@ import typing
 import functools
 import itertools
 import profiling
+import const
 
 RANKS = 'AKQJT98765432'
 SUITS = ['s', 'h', 'd', 'c']
@@ -12,7 +13,7 @@ SUITS = ['s', 'h', 'd', 'c']
 # Hole card patterns
 PAIRS = "22+"
 STRONG_ACES = "AK, AQ, AJ"
-BROADWAYS="KJ, KQ, QJ"
+BROADWAYS = "KJ, KQ, QJ"
 SUITED_CONNECTORS = "32s-AKs"
 SUITED_GAPPERS = "42s-AQs"
 
@@ -435,6 +436,10 @@ def calc_equities(h_list, board, limit=float('inf')) -> typing.List[float]:
         eq = db.get_equity(h_list[0], h_list[1])
         return [eq, 1 - eq]
     else:
+        if len(board) == 0:
+            # multi-way equities pre-flop are very costly to calculate, always need to limit this
+            limit = min(limit, const.EQUITY_CALC_N_ITERS)
+
         wins = calc_wins(h_list, board, limit=limit)
         denom = sum(wins)
         return [w / denom for w in wins]
@@ -483,6 +488,15 @@ def calc_wins(h_list, board, limit=float('inf')) -> typing.List[float]:
                 wins[i] += w[i]
 
     return wins
+
+
+def format_pcnt(pcnt: float, cap=True) -> str:
+    if cap:
+        pcnt = max(0., min(.999, pcnt))
+    res = f"{pcnt * 100:.1f}%"
+    if len(res) < 5:
+        res = f" {res}"
+    return res
 
 
 if __name__ == "__main__":
