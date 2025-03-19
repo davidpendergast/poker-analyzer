@@ -39,9 +39,10 @@ class Hand:
                 and self.hero_id == other.hero_id)
 
     def __str__(self):
-        net = locale.currency(self.get_hero().net())
-        cards = self.get_hero().get_cards_str()
-        stack = locale.currency(self.get_hero().stack)
+        hero = self.get_hero()
+        net = locale.currency(self.get_hero().net()) if hero is not None else "----"
+        cards = self.get_hero().get_cards_str() if hero is not None else "----"
+        stack = locale.currency(self.get_hero().stack) if hero is not None else "----"
 
         got_to_flop = self.hero_got_to_street(actions.FLOP)
         got_to_turn = self.hero_got_to_street(actions.TURN)
@@ -494,12 +495,18 @@ class HandGroup(collections.abc.Sequence):
     def __getitem__(self, item):
         return self.hands[item]
 
-    def dates(self) -> typing.List[str]:
-        res = []
-        for h in self.hands:
-            datestr = h.timestamp.strftime("%Y-%m-%d")
-            if len(res) == 0 or res[-1] != datestr:
-                res.append(datestr)
+    def dates(self, first_hand_per_sess_only=False) -> typing.List[str]:
+        res = set()
+        if first_hand_per_sess_only and len(self.hands) > 0:
+            split_by_sess = self._split_by_session()
+            for (k, hands) in split_by_sess.items():
+                hands.sort(key=lambda _h: _h.timestamp)
+                res.add(hands[0].timestamp.strftime("%Y-%m-%d"))
+        else:
+            for h in self.hands:
+                res.add(h.timestamp.strftime("%Y-%m-%d"))
+        res = list(res)
+        res.sort()  # lexicographic sort works here (for next 7975~ years) due to format
         return res
 
     def players(self) -> typing.List[str]:
@@ -677,12 +684,16 @@ class HandGroup(collections.abc.Sequence):
         else:
             return wins / (wins + losses)
 
-    def session_count(self) -> int:
-        sessions = set()
+    def _split_by_session(self) -> typing.Dict[str, typing.List['Hand']]:
+        res = {}
         for h in self.hands:
-            if 'logfile' in h.configs and h.configs['logfile'] is not None:
-                sessions.add(h.configs['logfile'])
-        return len(sessions)
+            if h.configs['logfile'] not in res:
+                res[h.configs['logfile']] = []
+            res[h.configs['logfile']].append(h)
+        return res
+
+    def session_count(self) -> int:
+        return len(self._split_by_session())
 
     def most_recent_sessions(self, n, desc=None) -> 'HandGroup':
         if n < 0:
@@ -693,10 +704,9 @@ class HandGroup(collections.abc.Sequence):
         else:
             all_sessions = {}
             for h in self.hands:
-                if 'logfile' in h.configs and h.configs['logfile'] is not None:
-                    logfile = h.configs['logfile']
-                    if logfile not in all_sessions:
-                        all_sessions[logfile] = h.timestamp
+                logfile = h.configs['logfile']
+                if logfile not in all_sessions:
+                    all_sessions[logfile] = h.timestamp
             sorted_sessions = [k for k in all_sessions.keys()]
             sorted_sessions.sort(key=lambda k: all_sessions[k], reverse=True)
             if len(sorted_sessions) <= n:
@@ -705,7 +715,7 @@ class HandGroup(collections.abc.Sequence):
                 sessions = sorted_sessions[:n]
                 hands_to_keep = []
                 for h in self.hands:
-                    if 'logfile' in h.configs and h.configs['logfile'] in sessions:
+                    if h.configs['logfile'] in sessions:
                         hands_to_keep.append(h)
                 return HandGroup(hands_to_keep, desc=desc)
 

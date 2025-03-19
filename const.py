@@ -13,13 +13,13 @@ HERO_ID = 'Ghast @ k-xm91OpZ6'              # ID of the player to track.
 # HERO_ID = 'Flow @ pvi7lGaAqX'               # (for debug) Flow
 # HERO_ID = 'Freky @ rnl8dHxqtf'              # (for debug) Freky
 
-N_MOST_RECENT_SESSIONS_TO_SCRAPE = 1  # -1
+N_MOST_RECENT_SESSIONS_TO_SCRAPE = 1
 
 LOG_DOWNLOADER_ID = 'k-xm91OpZ6'    # ID of the player who downloaded the logs.
 
 LOG_DIR = "C:\\Users\\david\\Desktop\\Poker Notes\\logs"
-EQUITY_DB = "assets\\preflop_equities_n1000.txt"
 # LOG_DIR = "testdata"
+EQUITY_DB = "assets\\preflop_equities_n1000.txt"
 
 IS_DEV = os.path.exists(".gitignore")
 

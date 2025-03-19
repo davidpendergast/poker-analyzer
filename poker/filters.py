@@ -21,6 +21,12 @@ class Filter:
         return NotFilter(self)
 
 
+class HeroPlayed(Filter):
+
+    def test(self, hand: hands.Hand) -> bool:
+        return hand.get_hero() is not None
+
+
 class HeroCardFilter(Filter):
 
     def __init__(self, pattern):
@@ -29,6 +35,8 @@ class HeroCardFilter(Filter):
 
     def test(self, hand: hands.Hand) -> bool:
         hero = hand.get_hero()
+        if hero is None:
+            return False
         return cardutils.cards_match_pattern(hero.cards, self.pattern)
 
 
@@ -40,6 +48,8 @@ class HeroCardsKnown(Filter):
 
     def test(self, hand: 'hands.Hand') -> bool:
         hero = hand.get_hero()
+        if hero is None:
+            return False
         return len(list(c for c in hero.cards if c is not None)) in self.counts
 
 

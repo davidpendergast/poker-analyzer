@@ -26,18 +26,16 @@ def scrape_directory(hero_id, log_downloader_id, dirpath, desc="All Hands") -> h
               f"({dates[0] if len(dates) > 0 else '?/?/????'})")
     print()
 
-    if len(all_hands) == 0:
-        print(f"No hands found for HERO_ID={hero_id}")
-        raise SystemExit
-
     # for debugging
-    if len(all_groups) == 1:
-        next_stack_should_be = None
-        for h in all_hands:
-            if next_stack_should_be is not None and abs(h.get_hero().stack - next_stack_should_be) > 0.005:
-                print(f"*** Unexpected stack (expect={locale.currency(next_stack_should_be)}, actual={h.get_hero().stack})")
-            print(h)
-            next_stack_should_be = h.get_hero().stack + h.get_hero().net()
+    # if len(all_groups) == 1:
+    #     next_stack_should_be = None
+    #     for h in all_hands:
+    #         print(h)
+    #         if h.get_hero() is None:
+    #             continue
+    #         if next_stack_should_be is not None and abs(h.get_hero().stack - next_stack_should_be) > 0.005:
+    #             print(f"*** Unexpected stack (expect={locale.currency(next_stack_should_be)}, actual={h.get_hero().stack})")
+    #         next_stack_should_be = h.get_hero().stack + h.get_hero().net()
 
     return all_hands
 
@@ -67,7 +65,12 @@ def scrape(hero_id, log_downloader_id, logfilepath) -> typing.List[hands.Hand]:
                 cur_hand_lines.clear()
             cur_hand_lines.append(lines[i])
             if i >= len(lines) - 1 or (started_first and lines[i + 1][0].startswith("-- starting hand #")):
-                hand = _create_hand_from_lines(hero_id, log_downloader_id, cur_hand_configs, cur_hand_lines)
+                hand = _create_hand_from_lines(
+                        hero_id,
+                        log_downloader_id,
+                        cur_hand_configs,
+                        cur_hand_lines,
+                        must_include_hero=False)
                 if hand is not None:
                     res.append(hand)
     return res
@@ -82,7 +85,7 @@ def _update_configs(configs, line):
         configs['ante_cost'] = float(old_new[1])
 
 
-def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typing.Optional[hands.Hand]:
+def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, must_include_hero=True) -> typing.Optional[hands.Hand]:
     intro_line = _pop_line_matching(lines, r'-- starting hand #(\d+).*')
     hand_idx = int(_find_text(intro_line[0], r'-- starting hand #(\d+).*')[0])
     timestamp = parse_utc_timestamp(intro_line[1])
@@ -109,6 +112,9 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
     hand = hands.Hand(timestamp, end_timestamp, configs, hand_idx, hero_id, player_list)
 
     hero = hand.get_hero()
+    if hero is None and must_include_hero:
+        return None
+
     your_hand_line = _pop_line_matching(lines, r'Your hand is.*', allow_fail=True)
     if hero is not None and hands.Player.names_eq(log_downloader_id, hero_id) and your_hand_line is not None:
         c1, c2 = _find_text(your_hand_line[0], "Your hand is (.+), (.+)")
@@ -154,7 +160,6 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
         elif name_amt := _find_text(line[0], r'"(.*)" collected ([\d\.]+) from pot.*', allow_fail=True):
             name, amt = name_amt[0], float(name_amt[1])
             _get_player(player_list, name).gain += amt
-            return hand if hand.get_hero() is not None else None
         elif name_shows := _find_text(line[0], r'"(.*)" shows a (.*)\.', allow_fail=True):
             name, shows = name_shows[0], name_shows[1]
             _handle_player_shows_a_card(player_list, name, shows, voluntary=int(line[2]) > final_collect_line_order)
@@ -172,7 +177,7 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
         flop_raw = _find_text(flop_line[0], r'Flop:[ ]+\[(.*)\]')[0].split(", ")
         hand.board = [_convert_card(c) for c in flop_raw] + [None, None]
     else:
-        return hand if hand.get_hero() is not None else None
+        return hand
 
     hand.flop_actions = _process_post_flop_actions(hand, lines, player_list, actions.FLOP, final_collect_line_order)
 
@@ -181,7 +186,7 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
         turn_raw = _find_text(turn_line[0], r'Turn:[ ]+.* \[(.*)\]')[0]
         hand.board[3] = _convert_card(turn_raw)
     else:
-        return hand if hand.get_hero() is not None else None
+        return hand
 
     hand.turn_actions = _process_post_flop_actions(hand, lines, player_list, actions.TURN, final_collect_line_order)
 
@@ -190,11 +195,10 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines) -> typin
         river_raw = _find_text(river_line[0], r'River:[ ]+.* \[(.*)\]')[0]
         hand.board[4] = _convert_card(river_raw)
     else:
-        return hand if hand.get_hero() is not None else None
+        return hand
 
     hand.river_actions = _process_post_flop_actions(hand, lines, player_list, actions.RIVER, final_collect_line_order)
-
-    return hand if hand.get_hero() is not None else None
+    return hand
 
 
 def _process_post_flop_actions(hand, lines, player_list, street, final_collect_line_order):
