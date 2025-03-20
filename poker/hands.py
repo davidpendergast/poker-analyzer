@@ -146,6 +146,7 @@ class Hand:
         return "".join(res)
 
     def did_player_4bet_pre(self, player_id):
+        # TODO incomplete method
         """returns: (had_opportunity, 'raise'/'call'/'fold')"""
         player_opened = False
         someone_raised = False
@@ -159,6 +160,24 @@ class Hand:
                 else:
                     if someone_raised:
                         return False, None  # two opponents took aggressive actions
+
+    def get_player_aggro_and_passive_counts(self, player_id, after_vpip=True):
+        """returns: (n_aggressive_actions, n_passive_actions)"""
+        if self.get_player(player_id) is None:
+            return 0, 0
+        if after_vpip and not self.did_player_vpip(player_id, street=actions.ANY):
+            return 0, 0
+
+        aggro_cnt = 0
+        passive_cnt = 0
+
+        for a in self.all_actions(player_id):
+            if a.is_aggro():
+                aggro_cnt += 1
+            elif a.is_passive():
+                passive_cnt += 1
+
+        return aggro_cnt, passive_cnt
 
     def did_player_raise(self, player_id, street=actions.ANY):
         for a in self.all_actions(player_id=self.hero_id, street=street):
@@ -610,6 +629,19 @@ class HandGroup(collections.abc.Sequence):
         else:
             return did_show / had_opportunity
 
+    def get_aggression_factor(self, player_id=None, after_vpip=True) -> float:
+        aggro_cnt = 0
+        passive_cnt = 0
+        for h in self.hands:
+            aggro, passive = h.get_player_aggro_and_passive_counts(player_id, after_vpip=after_vpip)
+            aggro_cnt += aggro
+            passive_cnt += passive
+
+        if aggro_cnt + passive_cnt == 0:
+            return 0
+        else:
+            return aggro_cnt / (aggro_cnt + passive_cnt)
+
     def net_gain(self, player_id=None):
         res = 0
         for h in self.hands:
@@ -738,9 +770,10 @@ class HandGroup(collections.abc.Sequence):
         three_bet_pcnt = cardutils.format_pcnt(self.get_3bet_pcnt(player_id=player_id))
         saw_flop = cardutils.format_pcnt(self.get_saw_street_pcnt(player_id=player_id, street=actions.FLOP))
         show_pcnt = cardutils.format_pcnt(self.get_voluntary_show_pcnt(player_id=player_id, after_vpip=True))
+        aggro_pcnt = cardutils.format_pcnt(self.get_aggression_factor(player_id=player_id, after_vpip=True))
 
         return (f"{desc:<32}{avg_bbs:<12}{total:<12}{in_x_hands:<18}"
-                f"[VPIP={vpip_pcnt:>5}, 3BET={three_bet_pcnt}, SAW_FLOP={saw_flop}, WIN={win_pcnt}, WaSD={win_at_sd_pcnt}, SHOW={show_pcnt}]")
+                f"[VPIP={vpip_pcnt:>5}, 3BET={three_bet_pcnt}, SAW_FLOP={saw_flop}, WIN={win_pcnt}, WaSD={win_at_sd_pcnt}, SHOW={show_pcnt}, AGGRO={aggro_pcnt}]")
 
     def get_hole_card_freqs(self, player_id=None):
         res = {}

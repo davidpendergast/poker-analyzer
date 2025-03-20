@@ -2,14 +2,33 @@
 
 import typing
 import locale
+import json
 
 from poker import filters, actions, hands, scraping, preflop_db
 
 import const
 
+
+def load_aliases_from_disk(fname):
+    try:
+        with open(fname) as f:
+            return json.load(f)
+    except ValueError:
+        return {}
+
+
 if __name__ == "__main__":
     preflop_db.load_from_disk()
-    all_hands = scraping.scrape_directory(const.HERO_ID, const.LOG_DOWNLOADER_ID, const.LOG_DIR)
+    aliases = load_aliases_from_disk(const.ALIAS_FILENAME)
+    all_hands = scraping.scrape_directory(const.HERO_ID, const.LOG_DOWNLOADER_ID, const.LOG_DIR, aliases=aliases)
+
+    if const.SHOW_UNIQUE_PLAYERS:
+        players = all_hands.players()
+        players.sort(key=lambda p: all_hands.hands_played(p), reverse=True)
+        print("-- Players --")
+        for p in players:
+            print(f"  {p} ({all_hands.hands_played(p)} hands)")
+        print()
 
     if const.N_MOST_RECENT_SESSIONS_TO_SCRAPE > 0:
         all_hands = all_hands.most_recent_sessions(const.N_MOST_RECENT_SESSIONS_TO_SCRAPE, desc=all_hands.desc)

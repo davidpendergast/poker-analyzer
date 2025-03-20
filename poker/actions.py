@@ -83,6 +83,7 @@ EARLY_POS = "EP"  #
 BLINDS = "BLINDS" #
 ANY = "any"       # note: same var as in 'Streets'
 
+
 class Action:
 
     def __init__(self, player_id, amount, action_type, street, all_in=False):

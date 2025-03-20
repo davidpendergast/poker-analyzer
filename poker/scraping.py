@@ -9,13 +9,14 @@ import re
 import locale
 
 
-def scrape_directory(hero_id, log_downloader_id, dirpath, desc="All Hands") -> hands.HandGroup:
+def scrape_directory(hero_id, log_downloader_id, dirpath, desc="All Hands", aliases=()) -> hands.HandGroup:
     locale.setlocale(locale.LC_ALL, '')
     all_hands = hands.HandGroup([], desc=desc)
     all_groups = []
     filenames = os.listdir(dirpath)
     for f in filenames:
-        hl = scrape(hero_id, log_downloader_id, os.path.join(dirpath, f))
+        hl = scrape(hero_id, log_downloader_id, os.path.join(dirpath, f),
+                    alias_lookup=_invert_alias_map(hero_id, aliases))
         group = hands.HandGroup(hl)
         all_groups.append((group, f))
         all_hands.extend(hl)
@@ -40,7 +41,24 @@ def scrape_directory(hero_id, log_downloader_id, dirpath, desc="All Hands") -> h
     return all_hands
 
 
-def scrape(hero_id, log_downloader_id, logfilepath) -> typing.List[hands.Hand]:
+def _invert_alias_map(hero_id, aliases):
+    res = {}  # player_id -> 'AliasName @ alias_id'
+    for pname in aliases:
+        codes = aliases[pname]
+        if len(codes) == 0:
+            continue
+        elif hero_id in codes:
+            alias = f"{pname} @ {hero_id}"
+        else:
+            alias = f"{pname} @ {codes[0]}"
+        for code in codes:
+            if code in res:
+                raise ValueError(f"Player code \"{code}\" is pointing at two aliases: {res[code]}, {alias}")
+            res[code] = alias
+    return res
+
+
+def scrape(hero_id, log_downloader_id, logfilepath, alias_lookup=()) -> typing.List[hands.Hand]:
     res = []
     with open(logfilepath, mode='r') as csvfile:
         reader = csv.reader(csvfile)
@@ -70,6 +88,7 @@ def scrape(hero_id, log_downloader_id, logfilepath) -> typing.List[hands.Hand]:
                         log_downloader_id,
                         cur_hand_configs,
                         cur_hand_lines,
+                        alias_lookup=alias_lookup,
                         must_include_hero=False)
                 if hand is not None:
                     res.append(hand)
@@ -85,10 +104,14 @@ def _update_configs(configs, line):
         configs['ante_cost'] = float(old_new[1])
 
 
-def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, must_include_hero=True) -> typing.Optional[hands.Hand]:
+def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, alias_lookup=(), must_include_hero=True) -> typing.Optional[hands.Hand]:
     intro_line = _pop_line_matching(lines, r'-- starting hand #(\d+).*')
     hand_idx = int(_find_text(intro_line[0], r'-- starting hand #(\d+).*')[0])
     timestamp = parse_utc_timestamp(intro_line[1])
+
+    def clean_pname(_pname: str):
+        _, pid = _pname.split(' @ ')
+        return alias_lookup[pid] if pid in alias_lookup else _pname
 
     end_line = _find_line_matching(lines, r'-- ending hand #(\d+).*')
     if end_line is None:
@@ -107,13 +130,16 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, must_inc
     raw_players = _find_text(players_line[0], r'Player stacks: (.*)')[0].split(" | ")
     for p in raw_players:
         pname, pstack = _find_text(p, r'"(.*)" \((.*)\)')
-        player_list.append(hands.Player(pname, float(pstack), -1, (None, None)))
+        player_list.append(hands.Player(clean_pname(pname), float(pstack), -1, (None, None)))
 
     hand = hands.Hand(timestamp, end_timestamp, configs, hand_idx, hero_id, player_list)
 
     hero = hand.get_hero()
     if hero is None and must_include_hero:
         return None
+
+    if log_downloader_id in alias_lookup:
+        log_downloader_id = alias_lookup[log_downloader_id]
 
     your_hand_line = _pop_line_matching(lines, r'Your hand is.*', allow_fail=True)
     if hero is not None and hands.Player.names_eq(log_downloader_id, hero_id) and your_hand_line is not None:
@@ -125,43 +151,43 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, must_inc
     while len(lines) > 0:
         line = lines[0]
         if fields := _find_text(line[0], r'"(.*)" posts a small blind of ([\d\.]+)( and go all in)?', allow_fail=True):
-            name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
+            name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.SB, actions.PRE_FLOP, all_in=all_in))
             _get_player(player_list, name).street_nets['pre-flop'] -=amt
         elif fields := _find_text(line[0], r'"(.*)" posts a big blind of ([\d\.]+)( and go all in)?', allow_fail=True):
-            name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
+            name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.BB, actions.PRE_FLOP, all_in=all_in))
             _get_player(player_list, name).street_nets['pre-flop'] -=amt
         elif fields := _find_text(line[0], r'"(.*)" posts a miss(?:.*) of ([\d\.]+)( and go all in)?', allow_fail=True):
             # if you sit out during your blind(s) and then rejoin, it compels you to post a missing SB/BB at your current position.
-            name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
+            name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             _get_player(player_list, name).street_nets[actions.PRE_FLOP] -= amt
         elif fields := _find_text(line[0], r'"(.*)" calls ([\d\.]+)( and go all in)?', allow_fail=True):
-            name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
+            name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.CALL, actions.PRE_FLOP, all_in=all_in))
             _get_player(player_list, name).street_nets['pre-flop'] = -amt
         elif fields := _find_text(line[0], r'"(.*)" bets ([\d\.]+)( and go all in)?', allow_fail=True):
-            name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
+            name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.OPEN, actions.PRE_FLOP, all_in=all_in))
             _get_player(player_list, name).street_nets['pre-flop'] = -amt
         elif name := _find_text(line[0], r'"(.*)" checks', allow_fail=True):
-            name = name[0]
+            name = clean_pname(name[0])
             hand.pre_flop_actions.append(actions.Action(name, 0, actions.CHECK, actions.PRE_FLOP))
         elif name := _find_text(line[0], r'"(.*)" folds', allow_fail=True):
-            name = name[0]
+            name = clean_pname(name[0])
             hand.pre_flop_actions.append(actions.Action(name, 0, actions.FOLD, actions.PRE_FLOP))
         elif fields := _find_text(line[0], r'"(.*)" raises to ([\d\.]+)( and go all in)?', allow_fail=True):
-            name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
+            name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.RAISE, actions.PRE_FLOP, all_in=all_in))
             _get_player(player_list, name).street_nets['pre-flop'] = -amt
         elif name_amt := _find_text(line[0], r'Uncalled bet of (.*) returned to "(.*)"', allow_fail=True):
-            amt, name = float(name_amt[0]), name_amt[1]
+            amt, name = float(name_amt[0]), clean_pname(name_amt[1])
             _get_player(player_list, name).gain += amt
         elif name_amt := _find_text(line[0], r'"(.*)" collected ([\d\.]+) from pot.*', allow_fail=True):
-            name, amt = name_amt[0], float(name_amt[1])
+            name, amt = clean_pname(name_amt[0]), float(name_amt[1])
             _get_player(player_list, name).gain += amt
         elif name_shows := _find_text(line[0], r'"(.*)" shows a (.*)\.', allow_fail=True):
-            name, shows = name_shows[0], name_shows[1]
+            name, shows = clean_pname(name_shows[0]), name_shows[1]
             _handle_player_shows_a_card(player_list, name, shows, voluntary=int(line[2]) > final_collect_line_order)
         elif _find_text(line[0], r'Flop:[ ]+.*', allow_fail=True) is not None:
             break
@@ -179,7 +205,7 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, must_inc
     else:
         return hand
 
-    hand.flop_actions = _process_post_flop_actions(hand, lines, player_list, actions.FLOP, final_collect_line_order)
+    hand.flop_actions = _process_post_flop_actions(hand, lines, player_list, actions.FLOP, final_collect_line_order, clean_pname)
 
     turn_line = _pop_line_matching(lines, r'Turn:[ ]+.*', allow_fail=True)
     if turn_line is not None:
@@ -188,7 +214,7 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, must_inc
     else:
         return hand
 
-    hand.turn_actions = _process_post_flop_actions(hand, lines, player_list, actions.TURN, final_collect_line_order)
+    hand.turn_actions = _process_post_flop_actions(hand, lines, player_list, actions.TURN, final_collect_line_order, clean_pname)
 
     river_line = _pop_line_matching(lines, r'River:[ ]+.*', allow_fail=True)
     if river_line is not None:
@@ -197,41 +223,41 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, must_inc
     else:
         return hand
 
-    hand.river_actions = _process_post_flop_actions(hand, lines, player_list, actions.RIVER, final_collect_line_order)
+    hand.river_actions = _process_post_flop_actions(hand, lines, player_list, actions.RIVER, final_collect_line_order, clean_pname)
     return hand
 
 
-def _process_post_flop_actions(hand, lines, player_list, street, final_collect_line_order):
+def _process_post_flop_actions(hand, lines, player_list, street, final_collect_line_order, clean_pname):
     acts = []
 
     while len(lines) > 0:
         line = lines[0]
         if fields := _find_text(line[0], r'"(.*)" calls ([\d\.]+)( and go all in)?', allow_fail=True):
-            name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
+            name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             acts.append(actions.Action(name, amt, actions.CALL, street, all_in=all_in))
             _get_player(hand.players, name).street_nets[street] = -amt
         elif fields := _find_text(line[0], r'"(.*)" bets ([\d\.]+)( and go all in)?', allow_fail=True):
-            name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
+            name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             acts.append(actions.Action(name, amt, actions.OPEN, street, all_in=all_in))
             _get_player(hand.players, name).street_nets[street] = -amt
         elif name := _find_text(line[0], r'"(.*)" checks', allow_fail=True):
-            name = name[0]
+            name = clean_pname(name[0])
             acts.append(actions.Action(name, 0, actions.CHECK, street))
         elif name := _find_text(line[0], r'"(.*)" folds', allow_fail=True):
-            name = name[0]
+            name = clean_pname(name[0])
             acts.append(actions.Action(name, 0, actions.FOLD, street))
         elif fields := _find_text(line[0], r'"(.*)" raises to ([\d\.]+)( and go all in)?', allow_fail=True):
-            name, amt, all_in = fields[0], float(fields[1]), fields[2] is not None
+            name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             acts.append(actions.Action(name, amt, actions.RAISE, street, all_in=all_in))
             _get_player(hand.players, name).street_nets[street] = -amt
         elif name_amt := _find_text(line[0], r'Uncalled bet of (.*) returned to "(.*)"', allow_fail=True):
-            amt, name = float(name_amt[0]), name_amt[1]
+            amt, name = float(name_amt[0]), clean_pname(name_amt[1])
             _get_player(hand.players, name).gain += amt
         elif name_amt := _find_text(line[0], r'"(.*)" collected ([\d\.]+) from pot.*', allow_fail=True):
-            name, amt = name_amt[0], float(name_amt[1])
+            name, amt = clean_pname(name_amt[0]), float(name_amt[1])
             _get_player(hand.players, name).gain += amt
         elif name_shows := _find_text(line[0], r'"(.*)" shows a (.*)\.', allow_fail=True):
-            name, shows = name_shows[0], name_shows[1]
+            name, shows = clean_pname(name_shows[0]), name_shows[1]
             _handle_player_shows_a_card(player_list, name, shows, voluntary=int(line[2]) > final_collect_line_order)
         elif street == actions.FLOP and _find_text(line[0], r'Turn:[ ]+.*', allow_fail=True) is not None:
             break
