@@ -1,5 +1,6 @@
 import datetime
 
+import const
 from poker import hands, actions
 
 import typing
@@ -20,9 +21,9 @@ def scrape_directory(hero_id, log_downloader_id, dirpath, desc="All Hands", alia
         group = hands.HandGroup(hl)
         all_groups.append((group, f))
         all_hands.extend(hl)
+
     for group, fname in sorted(all_groups, key=lambda x: x[0].dates()):
         dates = group.dates()
-
         print(f"Scraped {len(group):<4} hand(s) from: {fname} {locale.currency(group.net_gain()):<9} "
               f"({dates[0] if len(dates) > 0 else '?/?/????'})")
     print()
@@ -91,6 +92,7 @@ def scrape(hero_id, log_downloader_id, logfilepath, alias_lookup=()) -> typing.L
                         alias_lookup=alias_lookup,
                         must_include_hero=False)
                 if hand is not None:
+                    hand.calc_advanced_stats(limit=const.EQUITY_CALC_N_ITERS)
                     res.append(hand)
     return res
 

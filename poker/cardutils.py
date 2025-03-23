@@ -7,6 +7,7 @@ import functools
 import itertools
 
 import poker.hands
+import poker.actions
 import profiling
 import const
 
@@ -454,6 +455,28 @@ def calc_equities(h_list, board, limit=float('inf')) -> typing.List[float]:
         return [w / denom for w in wins]
 
 
+def generate_possible_runouts(board, cards_in_deck, draw_to=5, limit=float('inf')) \
+        -> typing.Generator[typing.List[str], None, None]:
+
+    to_draw = draw_to - len(board)
+
+    n_possible_outcomes = 1
+    for i in range(to_draw):
+        n_possible_outcomes *= (len(cards_in_deck) - i)
+    n_possible_outcomes /= math.factorial(to_draw)  # order of draws doesn't matter
+
+    def gen() -> typing.Generator[typing.List[str], None, None]:
+        if limit >= n_possible_outcomes:
+            for res in itertools.combinations(cards_in_deck, to_draw):
+                yield res
+        else:
+            for _ in range(int(limit)):
+                yield random.sample(cards_in_deck, to_draw)
+
+    for draws in gen():
+        yield draws
+
+
 def calc_wins(h_list, board, limit=float('inf')) -> typing.List[float]:
     wins = [0] * len(h_list)
     if len(board) >= 5:
@@ -475,23 +498,9 @@ def calc_wins(h_list, board, limit=float('inf')) -> typing.List[float]:
         for c in board:
             used_cards.add(c)
 
-        domain = list(all_cards(ignore=used_cards))
-        to_draw = 5 - len(board)
+        cards_in_deck = list(all_cards(ignore=used_cards))
 
-        n_possible_outcomes = 1
-        for i in range(to_draw):
-            n_possible_outcomes *= (len(domain) - i)
-        n_possible_outcomes /= math.factorial(to_draw)  # order of draws doesn't matter
-
-        def gen():
-            if limit >= n_possible_outcomes:
-                for res in itertools.combinations(domain, to_draw):
-                    yield res
-            else:
-                for _ in range(int(limit)):
-                    yield random.sample(domain, to_draw)
-
-        for draws in gen():
+        for draws in generate_possible_runouts(board, cards_in_deck, draw_to=5, limit=limit):
             w = calc_wins(h_list, board + list(draws))
             for i in range(len(wins)):
                 wins[i] += w[i]
@@ -500,12 +509,16 @@ def calc_wins(h_list, board, limit=float('inf')) -> typing.List[float]:
 
 
 def calc_payouts(hand: 'poker.hands.Hand') -> typing.Dict[str, float]:
+    return calc_payouts_from_components(hand.players, list(hand.all_actions()), hand.get_boards())
+
+
+def _calc_pots(player_objs: typing.List['poker.hands.Player'], action_list: typing.List['poker.actions.Action']):
     antes = 0
     amounts_put_in = {}
     active_players = set()
     players_and_cards = {}
 
-    for player in hand.players:
+    for player in player_objs:
         active_players.add(player.name_and_id)
         amounts_put_in[player.name_and_id] = -round(player.street_nets['pre-flop'] * 100 +
                                                     player.street_nets['flop'] * 100 +
@@ -516,18 +529,13 @@ def calc_payouts(hand: 'poker.hands.Hand') -> typing.Dict[str, float]:
             players_and_cards[player.name_and_id] = player.cards
     all_in_players = set()
 
-    for a in hand.all_actions():
+    for a in action_list:
         if a.is_fold():
             active_players.remove(a.player_id)
             continue
         elif a.is_all_in():
             active_players.remove(a.player_id)
             all_in_players.add(a.player_id)
-
-    if len(active_players) + len(all_in_players) == 1:
-        # if all but one folded, they get the entire pot.
-        total = sum(v for v in amounts_put_in.values()) + antes
-        return {next(iter(active_players.union(all_in_players))): total / 100.}
 
     remaining_players = [pid for pid in active_players.union(all_in_players)]
     remaining_players.sort(key=lambda pid: amounts_put_in[pid])
@@ -551,8 +559,17 @@ def calc_payouts(hand: 'poker.hands.Hand') -> typing.Dict[str, float]:
 
     pots[0]["value"] += antes
 
+    return pots, players_and_cards, remaining_players
+
+
+def calc_payouts_from_components(
+        player_objs: typing.List['poker.hands.Player'],
+        action_list: typing.List['poker.actions.Action'],
+        boards):
+
+    pots, players_and_cards, remaining_players = _calc_pots(player_objs, action_list)
+
     payouts = []
-    boards = hand.get_boards()
     for idx, b in enumerate(boards):
         sub_pots = []
         for p in pots:
@@ -561,7 +578,7 @@ def calc_payouts(hand: 'poker.hands.Hand') -> typing.Dict[str, float]:
             if idx < extra:
                 sub_pot["value"] += 1  # extra pennies go into earlier pots
             sub_pots.append(sub_pot)
-        payouts.append(_get_payout_for_board(hand, b, players_and_cards, remaining_players, sub_pots))
+        payouts.append(_get_payout_for_board(player_objs, b, players_and_cards, remaining_players, sub_pots))
 
     if len(payouts) == 1:
         return payouts[0]
@@ -576,7 +593,11 @@ def calc_payouts(hand: 'poker.hands.Hand') -> typing.Dict[str, float]:
         return total_payout
 
 
-def _get_payout_for_board(hand, board, players_and_cards, remaining_players, pots):
+def _get_payout_for_board(player_objs, board, players_and_cards, remaining_players, pots):
+
+    if len(remaining_players) == 1:
+        return {next(iter(remaining_players)): sum(p["value"] for p in pots) / 100.}
+
     made_hands = {pid: EvalHand(players_and_cards[pid], tuple(board)) for pid in players_and_cards if (pid in remaining_players)}
     sorted_hands = [(mh, pid) for pid, mh in made_hands.items()]
     sorted_hands.sort(reverse=True)
@@ -600,14 +621,15 @@ def _get_payout_for_board(hand, board, players_and_cards, remaining_players, pot
                 break
 
         if len(winners) == 0:
-            raise ValueError(f"Couldn't find a winner for pot: {p}, {grouped_hands}")
+            raise ValueError(f"Couldn't find a winner for pot: {pot}, {grouped_hands}")
 
         per_player = pot["value"] // len(winners)
 
         # logic for splitting non-evenly divisible pots
         extra = pot["value"] - per_player * len(winners)
         if extra > 0:
-            winners.sort(key=lambda w_pid: hand.get_player(w_pid).position)
+            pid_to_pos = {p.name_and_id: p.position for p in player_objs}
+            winners.sort(key=lambda w_pid: pid_to_pos[w_pid])
 
         res = {}
         for w_pid in winners:
@@ -628,11 +650,38 @@ def _get_payout_for_board(hand, board, players_and_cards, remaining_players, pot
     return {pid: res[pid] / 100. for pid in res}
 
 
-def calc_all_in_equities(hand) -> typing.Dict[str, float]:
-    pass
+def calc_all_in_equities(hand, cur_board, cards_in_deck, limit=float('inf')) \
+        -> typing.Dict[str, typing.Tuple[float, float, float]]:
+
+    n = 0
+    all_actions = list(hand.all_actions())
+    total_payouts = {}
+
+    def combine_payouts(pay):
+        for pid in pay:
+            if pid not in total_payouts:
+                total_payouts[pid] = 0
+            total_payouts[pid] += pay[pid]
+
+    for draws in generate_possible_runouts(cur_board, cards_in_deck, limit=limit):
+        n += 1
+        payouts = calc_payouts_from_components(hand.players, all_actions, [cur_board + list(draws)])
+        combine_payouts(payouts)
+
+    pots, _, _ = _calc_pots(hand.players, list(hand.all_actions()))
+
+    res = {p.name_and_id: (0., 0., 0.) for p in hand.players}
+    for pid in total_payouts:
+        avg_pay = total_payouts[pid] / n
+        max_pay = sum(pot["value"] / 100. for pot in pots if (pid in pot["players"]))
+        res[pid] = (avg_pay, max_pay, avg_pay / max_pay)
+
+    return res
 
 
 def format_pcnt(pcnt: float, cap=True) -> str:
+    if pcnt is None or math.isnan(pcnt):
+        return "     "
     if cap:
         pcnt = max(0., min(.999, pcnt))
     res = f"{pcnt * 100:.1f}%"

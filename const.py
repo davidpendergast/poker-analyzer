@@ -14,7 +14,7 @@ HERO_ID = 'Ghast @ k-xm91OpZ6'              # ID of the player to track.
 # HERO_ID = 'Freky @ rnl8dHxqtf'              # (for debug) Freky
 SHOW_UNIQUE_PLAYERS = True
 
-N_MOST_RECENT_SESSIONS_TO_SCRAPE = 15
+N_MOST_RECENT_SESSIONS_TO_SCRAPE = 1
 
 LOG_DOWNLOADER_ID = 'k-xm91OpZ6'    # ID of the player who downloaded the logs.
 
