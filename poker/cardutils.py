@@ -1,9 +1,12 @@
+import collections
 import math
 import random
 import re
 import typing
 import functools
 import itertools
+
+import poker.hands
 import profiling
 import const
 
@@ -308,7 +311,7 @@ class EvalHand:
         self.hole_cards = tuple(hole_cards)
         self.board = tuple(board)
 
-        made = calc_hand(list(hole_cards) + list(board))
+        made = EvalHand._calc_hand(list(hole_cards) + list(board))
         self.made_type = made[0]
         self.made_cards = made[1]
         self.made_kickers = made[2]
@@ -344,92 +347,98 @@ class EvalHand:
             res = f"{res} ({' '.join(self.made_kickers)})"
         return res
 
+    @staticmethod
+    def _calc_hand(cards):
+        """returns: (HAND_TYPE, cards, kicker(s))
+        """
+        cards = sort_by_rank(cards)
+        by_suit = split_by_suits(cards)
+        by_rank = split_by_ranks(cards)
+        trips = [g for g in by_rank.values() if len(g) == 3]
+        pairs = [g for g in by_rank.values() if len(g) == 2]
 
-def calc_hand(cards):
-    """returns: (HAND_TYPE, cards, kicker(s))
-    """
-    cards = sort_by_rank(cards)
-    by_suit = split_by_suits(cards)
-    by_rank = split_by_ranks(cards)
-    trips = [g for g in by_rank.values() if len(g) == 3]
-    pairs = [g for g in by_rank.values() if len(g) == 2]
+        # STRAIGHT_FLUSHES
+        for s in by_suit:
+            if len(by_suit[s]) >= 5:
+                best = []
+                for c in by_suit[s]:
+                    if len(best) == 0:
+                        best.append(c)
+                    elif len(best) == 5:
+                        break
+                    elif RANKS.index(best[-1][0]) == RANKS.index(c[0]) - 1:
+                        best.append(c)
+                    else:
+                        best.clear()
+                        best.append(c)
+                if len(best) == 5:
+                    return HandTypes.STRAIGHT_FLUSH, best, []
+                elif len(best) == 4 and best[0][0] == '5' and by_suit[s][0][0] == 'A':
+                    return HandTypes.STRAIGHT_FLUSH, best + [by_suit[s][0]], []  # wheel (5432A)
 
-    # STRAIGHT_FLUSHES
-    for s in by_suit:
-        if len(by_suit[s]) >= 5:
-            best = []
-            for c in by_suit[s]:
-                if len(best) == 0:
-                    best.append(c)
-                elif len(best) == 5:
-                    break
-                elif RANKS.index(best[-1][0]) == RANKS.index(c[0]) - 1:
-                    best.append(c)
-                else:
-                    best.clear()
-                    best.append(c)
-            if len(best) == 5:
-                return HandTypes.STRAIGHT_FLUSH, best, []
-            elif len(best) == 4 and best[0][0] == '5' and by_suit[s][0][0] == 'A':
-                return HandTypes.STRAIGHT_FLUSH, best + [by_suit[s][0]], []  # wheel (5432A)
+        # QUADS
+        for rank_group in by_rank.values():
+            if len(rank_group) == 4:
+                best = list(rank_group)
+                return HandTypes.QUADS, best, find_kickers(best, cards)
 
-    # QUADS
-    for rank_group in by_rank.values():
-        if len(rank_group) == 4:
-            best = list(rank_group)
-            return HandTypes.QUADS, best, find_kickers(best, cards)
+        # FULL HOUSES
+        if len(trips) >= 1 and (len(trips) + len(pairs)) >= 2:
+            best = list(trips[0])
+            if len(trips) > 1:
+                best.extend(trips[1][0:2])
+            else:
+                best.extend(pairs[0])
+            return HandTypes.FULL_HOUSE, best, []
 
-    # FULL HOUSES
-    if len(trips) >= 1 and (len(trips) + len(pairs)) >= 2:
-        best = list(trips[0])
-        if len(trips) > 1:
-            best.extend(trips[1][0:2])
-        else:
-            best.extend(pairs[0])
-        return HandTypes.FULL_HOUSE, best, []
+        # FLUSHES
+        for suit_group in by_suit.values():
+            if len(suit_group) >= 5:
+                return HandTypes.FLUSH, suit_group[:5], []
 
-    # FLUSHES
-    for suit_group in by_suit.values():
-        if len(suit_group) >= 5:
-            return HandTypes.FLUSH, suit_group[:5], []
+        # STRAIGHTS
+        best_straight = []
+        for c in cards:
+            if len(best_straight) == 0:
+                best_straight.append(c)
+            elif len(best_straight) == 5:
+                break
+            elif RANKS.index(best_straight[-1][0]) == RANKS.index(c[0]) - 1:
+                best_straight.append(c)
+            elif RANKS.index(best_straight[-1][0]) == RANKS.index(c[0]):
+                pass  # dupe rank inside the straight, has no effect
+            else:
+                best_straight.clear()
+                best_straight.append(c)
+        if len(best_straight) == 5:
+            return HandTypes.STRAIGHT, best_straight, []
+        elif len(best_straight) == 4 and best_straight[0][0] == '5' and cards[0][0] == 'A':
+            return HandTypes.STRAIGHT, best_straight + [cards[0]], []  # wheel (5432A)
 
-    # STRAIGHTS
-    best_straight = []
-    for c in cards:
-        if len(best_straight) == 0:
-            best_straight.append(c)
-        elif len(best_straight) == 5:
-            break
-        elif RANKS.index(best_straight[-1][0]) == RANKS.index(c[0]) - 1:
-            best_straight.append(c)
-        elif RANKS.index(best_straight[-1][0]) == RANKS.index(c[0]):
-            pass  # dupe rank inside the straight, has no effect
-        else:
-            best_straight.clear()
-            best_straight.append(c)
-    if len(best_straight) == 5:
-        return HandTypes.STRAIGHT, best_straight, []
-    elif len(best_straight) == 4 and best_straight[0][0] == '5' and cards[0][0] == 'A':
-        return HandTypes.STRAIGHT, best_straight + [cards[0]], []  # wheel (5432A)
+        # TRIPS
+        if len(trips) == 1:
+            return HandTypes.TRIPS, trips[0], find_kickers(trips[0], cards)
 
-    # TRIPS
-    if len(trips) == 1:
-        return HandTypes.TRIPS, trips[0], find_kickers(trips[0], cards)
+        # TWO_PAIRS
+        if len(pairs) >= 2:
+            best = pairs[0] + pairs[1]
+            return HandTypes.TWO_PAIR, best, find_kickers(best, cards)
 
-    # TWO_PAIRS
-    if len(pairs) >= 2:
-        best = pairs[0] + pairs[1]
-        return HandTypes.TWO_PAIR, best, find_kickers(best, cards)
+        # PAIRS
+        if len(pairs) == 1:
+            return HandTypes.PAIR, pairs[0], find_kickers(pairs[0], cards)
 
-    # PAIRS
-    if len(pairs) == 1:
-        return HandTypes.PAIR, pairs[0], find_kickers(pairs[0], cards)
-
-    # HIGH_CARDS
-    return HandTypes.HIGH_CARD, [cards[0]], cards[1:5]
+        # HIGH_CARDS
+        return HandTypes.HIGH_CARD, [cards[0]], cards[1:5]
 
 
 def calc_equities(h_list, board, limit=float('inf')) -> typing.List[float]:
+    """
+    :param h_list: list of hands [('Ad', 'Ks'), ('Qh', 'Qs'), ...].
+    :param board: list of cards on board ['4h', '4d', 'Jd'].
+    :param limit: how many run-outs to simulate (or inf, to simulate them all).
+    :return: list of each hand's equity.
+    """
     if len(h_list) == 2 and len(board) == 0:
         # if it's a H2H pre-flop lookup, use cache
         import poker.preflop_db as db
@@ -490,6 +499,116 @@ def calc_wins(h_list, board, limit=float('inf')) -> typing.List[float]:
     return wins
 
 
+def calc_payouts(hand: 'poker.hands.Hand') -> typing.Dict[str, float]:
+    antes = 0
+    amounts_put_in = {}
+    active_players = set()
+    players_and_cards = {}
+
+    for player in hand.players:
+        active_players.add(player.name_and_id)
+        amounts_put_in[player.name_and_id] = -round(player.street_nets['pre-flop'] * 100 +
+                                                    player.street_nets['flop'] * 100 +
+                                                    player.street_nets['turn'] * 100 +
+                                                    player.street_nets['river'] * 100)
+        antes += -round(player.street_nets['ante'] * 100)
+        if player.known_cards() == 2:
+            players_and_cards[player.name_and_id] = player.cards
+    folded_players = set()
+    all_in_players = set()
+
+    for a in hand.all_actions():
+        if a.is_fold():
+            active_players.remove(a.player_id)
+            folded_players.add(a.player_id)
+            continue
+        elif a.is_all_in():
+            active_players.remove(a.player_id)
+            all_in_players.add(a.player_id)
+
+    if len(active_players) + len(all_in_players) == 1:
+        # if all but one folded, they get the entire pot.
+        total = sum(v for v in amounts_put_in.values()) + antes
+        return {next(iter(active_players.union(all_in_players))): total / 100.}
+
+    made_hands = {pid: EvalHand(players_and_cards[pid], tuple(hand.board)) for pid in players_and_cards
+                  if (pid in active_players or pid in all_in_players)}
+    sorted_hands = [(mh, pid) for pid, mh in made_hands.items()]
+    sorted_hands.sort(reverse=True)
+
+    grouped_hands = []
+    for mh in sorted_hands:
+        if len(grouped_hands) == 0:
+            grouped_hands.append([mh])
+        elif grouped_hands[-1][0][0] == mh[0]:
+            grouped_hands[-1].append(mh)
+        else:
+            grouped_hands.append([mh])
+
+    remaining_players = [pid for pid in made_hands.keys()]
+    remaining_players.sort(key=lambda pid: amounts_put_in[pid])
+
+    pots = []
+    for idx, cur_pid in enumerate(remaining_players):
+        limit = amounts_put_in[cur_pid]
+        if limit <= 0:
+            continue
+        pot = {"value": 0, "players": set()}
+        for pid in amounts_put_in:
+            if amounts_put_in[pid] >= limit:
+                pot["players"].add(pid)
+                pot["value"] += limit
+                amounts_put_in[pid] -= limit
+            else:
+                # player contributed to pot but later folded
+                pot["value"] += amounts_put_in[pid]
+                amounts_put_in[pid] = 0
+        pots.append(pot)
+
+    pots[0]["value"] += antes
+
+    def _split_up_pot(pot):
+        winners = []
+        for group in grouped_hands:
+            for mh, g_pid in group:
+                if g_pid in pot["players"]:
+                    winners.append(g_pid)
+            if len(winners) > 0:
+                break
+
+        if len(winners) == 0:
+            raise ValueError(f"Couldn't find a winner for pot: {p}, {grouped_hands}")
+
+        per_player = pot["value"] // len(winners)
+
+        # logic for splitting non-evenly divisible pots
+        extra = pot["value"] - per_player * len(winners)
+        if extra > 0:
+            winners.sort(key=lambda w_pid: hand.get_player(w_pid).position)
+
+        res = {}
+        for w_pid in winners:
+            res[w_pid] = per_player
+            if extra > 0:
+                res[w_pid] += 1
+                extra -= 1
+        return res
+
+    res = {}
+    for p in pots:
+        split = _split_up_pot(p)
+        for pid in split:
+            if pid not in res:
+                res[pid] = 0
+            res[pid] += split[pid]
+
+    return {pid: res[pid] / 100. for pid in res}
+
+
+def calc_all_in_equities(hand) -> typing.Dict[str, float]:
+    pass
+
+
 def format_pcnt(pcnt: float, cap=True) -> str:
     if cap:
         pcnt = max(0., min(.999, pcnt))
@@ -497,6 +616,28 @@ def format_pcnt(pcnt: float, cap=True) -> str:
     if len(res) < 5:
         res = f" {res}"
     return res
+
+
+def safe_eq(coll1, coll2, thresh=0.00001):
+    if isinstance(coll1, (int, float)):
+        return abs(coll1 - coll2) < thresh
+    elif isinstance(coll1, dict):
+        if set(coll1.keys()) != set(coll2.keys()):
+            return False
+        else:
+            for k in coll1:
+                if not safe_eq(coll1[k], coll2[k], thresh=thresh):
+                    return False
+        return True
+    elif isinstance(coll1, collections.Sequence):
+        if len(coll1) != len(coll2):
+            return False
+        for v1, v2 in zip(coll1, coll2):
+            if not safe_eq(v1, v2, thresh=thresh):
+                return False
+        return True
+    else:
+        return coll1 == coll2
 
 
 if __name__ == "__main__":

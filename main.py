@@ -4,7 +4,7 @@ import typing
 import locale
 import json
 
-from poker import filters, actions, hands, scraping, preflop_db
+from poker import filters, actions, hands, scraping, preflop_db, cardutils
 
 import const
 
@@ -21,6 +21,13 @@ if __name__ == "__main__":
     preflop_db.load_from_disk()
     aliases = load_aliases_from_disk(const.ALIAS_FILENAME)
     all_hands = scraping.scrape_directory(const.HERO_ID, const.LOG_DOWNLOADER_ID, const.LOG_DIR, aliases=aliases)
+
+    for h in all_hands:
+        payouts = cardutils.calc_payouts(h)
+        actual = h.get_payouts()
+        if not cardutils.safe_eq(payouts, actual) and h.board2 is None:
+            print(f"*** bad payout calc: calc'd={payouts} != actual={actual}: {h}")
+            cardutils.calc_payouts(h)
 
     if const.SHOW_UNIQUE_PLAYERS:
         players = all_hands.players()

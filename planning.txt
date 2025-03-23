@@ -1,5 +1,7 @@
 Issues:
-- Only scrapes hands hero is in
+- When players post a missing small blind, it just goes directly into the pot (it's not a bet)
+- Doesn't understand double run-outs
+- Doesn't understand straddles
 
 To Do:
 - Calculate All-In Adjusted equities

@@ -146,6 +146,8 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, alias_lo
         c1, c2 = _find_text(your_hand_line[0], "Your hand is (.+), (.+)")
         hero.cards = _convert_card(c1), _convert_card(c2)
 
+    posted_missing_sb = {}
+
     # Pre-Flop
     pos = 0
     while len(lines) > 0:
@@ -153,15 +155,21 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, alias_lo
         if fields := _find_text(line[0], r'"(.*)" posts a small blind of ([\d\.]+)( and go all in)?', allow_fail=True):
             name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.SB, actions.PRE_FLOP, all_in=all_in))
-            _get_player(player_list, name).street_nets['pre-flop'] -=amt
+            _get_player(player_list, name).street_nets['pre-flop'] -= amt
         elif fields := _find_text(line[0], r'"(.*)" posts a big blind of ([\d\.]+)( and go all in)?', allow_fail=True):
             name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.BB, actions.PRE_FLOP, all_in=all_in))
-            _get_player(player_list, name).street_nets['pre-flop'] -=amt
-        elif fields := _find_text(line[0], r'"(.*)" posts a miss(?:.*) of ([\d\.]+)( and go all in)?', allow_fail=True):
-            # if you sit out during your blind(s) and then rejoin, it compels you to post a missing SB/BB at your current position.
-            name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
-            _get_player(player_list, name).street_nets[actions.PRE_FLOP] -= amt
+            _get_player(player_list, name).street_nets['pre-flop'] -= amt
+        elif fields := _find_text(line[0], r'"(.*)" posts a miss(.*) of ([\d\.]+)( and go all in)?', allow_fail=True):
+            # if you sit out during your blind(s) and then rejoin, it compels you to post a missing SB/BB.
+            # note: a missing small blind is treated like an ante, whereas a missing bb is treated like a bet.
+            name, bet_type, amt, all_in = clean_pname(fields[0]), fields[1], float(fields[2]), fields[3] is not None
+            if "small blind" in bet_type:
+                _get_player(player_list, name).street_nets['ante'] -= amt
+            elif "big blind" in bet_type:
+                _get_player(player_list, name).street_nets['pre-flop'] -= amt
+            else:
+                raise ValueError(f"Unrecognized missing bet type: {bet_type} (value={amt})")
         elif fields := _find_text(line[0], r'"(.*)" calls ([\d\.]+)( and go all in)?', allow_fail=True):
             name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.CALL, actions.PRE_FLOP, all_in=all_in))
@@ -222,6 +230,12 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, alias_lo
         hand.board[4] = _convert_card(river_raw)
     else:
         return hand
+
+    # find 2nd run-out if there was one.
+    river2_line = _pop_line_matching(lines, r'River \(second run\):.*', allow_fail=True)
+    if river2_line is not None:
+        river2_cards = _find_text(river2_line[0], r'River \(second run\):[ ]+([^,]*), ([^,]*), ([^,]*), ([^,]*) \[(.*)\].*')
+        hand.board2 = [_convert_card(c) for c in river2_cards]
 
     hand.river_actions = _process_post_flop_actions(hand, lines, player_list, actions.RIVER, final_collect_line_order, clean_pname)
     return hand

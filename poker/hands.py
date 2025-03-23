@@ -24,6 +24,7 @@ class Hand:
 
         self.players: typing.List['Player'] = players
         self.board = []
+        self.board2 = None
 
         self.pre_flop_actions = []
         self.flop_actions = []
@@ -44,10 +45,10 @@ class Hand:
         cards = self.get_hero().get_cards_str() if hero is not None else "----"
         stack = locale.currency(self.get_hero().stack) if hero is not None else "----"
 
-        got_to_flop = self.hero_got_to_street(actions.FLOP)
-        got_to_turn = self.hero_got_to_street(actions.TURN)
-        got_to_river = self.hero_got_to_street(actions.RIVER)
-        got_to_showdown = self.hero_got_to_street(actions.SHOWDOWN)
+        got_to_flop = self.hand_got_to_street(actions.FLOP)
+        got_to_turn = self.hand_got_to_street(actions.TURN)
+        got_to_river = self.hand_got_to_street(actions.RIVER)
+        got_to_showdown = self.hand_got_to_street(actions.SHOWDOWN)
 
         preflop_acts = self.get_action_seq_string(street=actions.PRE_FLOP)
         res = f"Hand #{self.hand_idx:<3} {self.timestamp.date()} {net:<8} {stack:<8} {cards} | {preflop_acts}"
@@ -71,6 +72,18 @@ class Hand:
 
         # TODO summarize showdown
         return res
+
+    def get_mutable_actions_for_street(self, street):
+        if street == actions.PRE_FLOP:
+            return self.pre_flop_actions
+        elif street == actions.FLOP:
+            return self.flop_actions
+        elif street == actions.TURN:
+            return self.turn_actions
+        elif street == actions.RIVER:
+            return self.river_actions
+        else:
+            raise ValueError(f"cannot get mutable actions for street: {street}")
 
     def all_actions(self, player_id=None, street=actions.ANY) -> typing.Generator[actions.Action, None, None]:
         streets = actions.unpack_street(street)
@@ -183,6 +196,13 @@ class Hand:
         for a in self.all_actions(player_id=self.hero_id, street=street):
             if Player.names_eq(player_id, a.player_id) and a.is_aggro():
                 return True
+
+    def get_payouts(self):
+        res = {}
+        for p in self.players:
+            if p.gain > 0:
+                res[p.name_and_id] = round(p.gain * 100) / 100
+        return res
 
     def did_hero_win(self):
         return self.did_player_win(None)
@@ -426,6 +446,7 @@ class Player:
         self.cards = cards
 
         self.street_nets = {
+            "ante": 0,
             "pre-flop": 0,
             "flop": 0,
             "turn": 0,
