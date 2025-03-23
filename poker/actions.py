@@ -52,6 +52,7 @@ def street_range(first, last):
 BB = 'bb'  # Player posts their big blind
 SB = 'sb'  # Player posts their small blind
 ANTE = 'ante'  # Player posts their ante
+STRADDLE = 'straddle'  # player posts a straddle
 
 CALL = 'call'   # Player calls a previous open, blind, or raise.
 OPEN = 'open'   # Player places the first bet on a street.
@@ -77,10 +78,11 @@ UTG = "UTG"
 BB = 'bb'    # note: same var as in 'Action Types'
 SB = 'sb'    # note: same var as in 'Action Types'
 
-LATE_POS = "LP"   #
-MID_POS = "MP"    #
-EARLY_POS = "EP"  #
-BLINDS = "BLINDS" #
+LATE_POS = "LP"
+MID_POS = "MP"
+EARLY_POS = "EP"
+BLINDS = "BLINDS"
+
 ANY = "any"       # note: same var as in 'Streets'
 
 

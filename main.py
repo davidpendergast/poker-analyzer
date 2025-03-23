@@ -25,7 +25,7 @@ if __name__ == "__main__":
     for h in all_hands:
         payouts = cardutils.calc_payouts(h)
         actual = h.get_payouts()
-        if not cardutils.safe_eq(payouts, actual) and h.board2 is None:
+        if not cardutils.safe_eq(payouts, actual):
             print(f"*** bad payout calc: calc'd={payouts} != actual={actual}: {h}")
             cardutils.calc_payouts(h)
 

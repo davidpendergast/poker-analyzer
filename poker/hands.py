@@ -24,7 +24,7 @@ class Hand:
 
         self.players: typing.List['Player'] = players
         self.board = []
-        self.board2 = None
+        self.board2 = None  # if two all-in run-outs occur
 
         self.pre_flop_actions = []
         self.flop_actions = []
@@ -72,6 +72,12 @@ class Hand:
 
         # TODO summarize showdown
         return res
+
+    def get_boards(self):
+        if self.board2 is None:
+            return [self.board]
+        else:
+            return [self.board, self.board2]
 
     def get_mutable_actions_for_street(self, street):
         if street == actions.PRE_FLOP:
@@ -146,7 +152,7 @@ class Hand:
                 if is_hero:
                     res.append('F')
                     break
-            elif act.action_type in (actions.BB, actions.SB, actions.ANTE):
+            elif act.action_type in (actions.STRADDLE, actions.BB, actions.SB, actions.ANTE):
                 continue
             elif act.action_type == actions.CALL:
                 res.append('C' if is_hero else 'c')
@@ -270,8 +276,9 @@ class Hand:
         in_hand_pre = set()
         in_hand = set()
         for a in self.pre_flop_actions:
-            if a.action_type in (actions.SB, actions.BB, actions.ANTE, actions.CALL, actions.OPEN,
-                                 actions.RAISE, actions.CHECK, actions.FOLD):
+            if a.action_type in (actions.SB, actions.BB, actions.STRADDLE, actions.ANTE,
+                                 actions.CALL, actions.OPEN, actions.RAISE, actions.CHECK,
+                                 actions.FOLD):
                 in_hand_pre.add(a.player_id)
                 in_hand.add(a.player_id)
             if a.action_type == actions.FOLD:
@@ -508,6 +515,9 @@ class Player:
         """returns: AdKd, JcTs style string"""
         return (f"{self.cards[0] if self.cards[0] is not None else '??'}"
                 f"{self.cards[1] if self.cards[1] is not None else '??'}")
+
+    def __str__(self):
+        return repr(self)
 
     def __repr__(self):
         return f"{type(self).__name__}({self.name_and_id=}, {self.stack=}, {self.position=}, {self.cards=}, {self.net=})"

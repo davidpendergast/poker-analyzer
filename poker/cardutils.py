@@ -514,13 +514,11 @@ def calc_payouts(hand: 'poker.hands.Hand') -> typing.Dict[str, float]:
         antes += -round(player.street_nets['ante'] * 100)
         if player.known_cards() == 2:
             players_and_cards[player.name_and_id] = player.cards
-    folded_players = set()
     all_in_players = set()
 
     for a in hand.all_actions():
         if a.is_fold():
             active_players.remove(a.player_id)
-            folded_players.add(a.player_id)
             continue
         elif a.is_all_in():
             active_players.remove(a.player_id)
@@ -531,21 +529,7 @@ def calc_payouts(hand: 'poker.hands.Hand') -> typing.Dict[str, float]:
         total = sum(v for v in amounts_put_in.values()) + antes
         return {next(iter(active_players.union(all_in_players))): total / 100.}
 
-    made_hands = {pid: EvalHand(players_and_cards[pid], tuple(hand.board)) for pid in players_and_cards
-                  if (pid in active_players or pid in all_in_players)}
-    sorted_hands = [(mh, pid) for pid, mh in made_hands.items()]
-    sorted_hands.sort(reverse=True)
-
-    grouped_hands = []
-    for mh in sorted_hands:
-        if len(grouped_hands) == 0:
-            grouped_hands.append([mh])
-        elif grouped_hands[-1][0][0] == mh[0]:
-            grouped_hands[-1].append(mh)
-        else:
-            grouped_hands.append([mh])
-
-    remaining_players = [pid for pid in made_hands.keys()]
+    remaining_players = [pid for pid in active_players.union(all_in_players)]
     remaining_players.sort(key=lambda pid: amounts_put_in[pid])
 
     pots = []
@@ -566,6 +550,45 @@ def calc_payouts(hand: 'poker.hands.Hand') -> typing.Dict[str, float]:
         pots.append(pot)
 
     pots[0]["value"] += antes
+
+    payouts = []
+    boards = hand.get_boards()
+    for idx, b in enumerate(boards):
+        sub_pots = []
+        for p in pots:
+            sub_pot = {"players": p["players"], "value": p["value"] // len(boards)}
+            extra = p["value"] - len(boards) * sub_pot["value"]
+            if idx < extra:
+                sub_pot["value"] += 1  # extra pennies go into earlier pots
+            sub_pots.append(sub_pot)
+        payouts.append(_get_payout_for_board(hand, b, players_and_cards, remaining_players, sub_pots))
+
+    if len(payouts) == 1:
+        return payouts[0]
+    else:
+        # recombine split pots
+        total_payout = {}
+        for payout in payouts:
+            for pid, value in payout.items():
+                if pid not in total_payout:
+                    total_payout[pid] = 0
+                total_payout[pid] += value
+        return total_payout
+
+
+def _get_payout_for_board(hand, board, players_and_cards, remaining_players, pots):
+    made_hands = {pid: EvalHand(players_and_cards[pid], tuple(board)) for pid in players_and_cards if (pid in remaining_players)}
+    sorted_hands = [(mh, pid) for pid, mh in made_hands.items()]
+    sorted_hands.sort(reverse=True)
+
+    grouped_hands = []
+    for mh in sorted_hands:
+        if len(grouped_hands) == 0:
+            grouped_hands.append([mh])
+        elif grouped_hands[-1][0][0] == mh[0]:
+            grouped_hands[-1].append(mh)
+        else:
+            grouped_hands.append([mh])
 
     def _split_up_pot(pot):
         winners = []

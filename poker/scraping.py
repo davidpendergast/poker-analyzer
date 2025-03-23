@@ -105,13 +105,26 @@ def _update_configs(configs, line):
 
 
 def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, alias_lookup=(), must_include_hero=True) -> typing.Optional[hands.Hand]:
+    pid_switches = _get_pid_switches(lines)
+
     intro_line = _pop_line_matching(lines, r'-- starting hand #(\d+).*')
     hand_idx = int(_find_text(intro_line[0], r'-- starting hand #(\d+).*')[0])
     timestamp = parse_utc_timestamp(intro_line[1])
 
+    _alias_mappings = {}
+
     def clean_pname(_pname: str):
-        _, pid = _pname.split(' @ ')
-        return alias_lookup[pid] if pid in alias_lookup else _pname
+        name, pid = _pname.split(' @ ')
+        if pid in pid_switches:
+            pid = pid_switches[pid]
+        if pid not in _alias_mappings:
+            alias = alias_lookup[pid] if pid in alias_lookup else f'{name} @ {pid}'
+            if alias in _alias_mappings.values():
+                # this can happen if people join a table with two alts at once
+                # we need to give them unique IDs
+                alias += "(dupe)"
+            _alias_mappings[pid] = alias
+        return _alias_mappings[pid]
 
     end_line = _find_line_matching(lines, r'-- ending hand #(\d+).*')
     if end_line is None:
@@ -146,8 +159,6 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, alias_lo
         c1, c2 = _find_text(your_hand_line[0], "Your hand is (.+), (.+)")
         hero.cards = _convert_card(c1), _convert_card(c2)
 
-    posted_missing_sb = {}
-
     # Pre-Flop
     pos = 0
     while len(lines) > 0:
@@ -155,11 +166,15 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, alias_lo
         if fields := _find_text(line[0], r'"(.*)" posts a small blind of ([\d\.]+)( and go all in)?', allow_fail=True):
             name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.SB, actions.PRE_FLOP, all_in=all_in))
-            _get_player(player_list, name).street_nets['pre-flop'] -= amt
+            _get_player(player_list, name).street_nets['pre-flop'] = -amt
         elif fields := _find_text(line[0], r'"(.*)" posts a big blind of ([\d\.]+)( and go all in)?', allow_fail=True):
             name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
             hand.pre_flop_actions.append(actions.Action(name, amt, actions.BB, actions.PRE_FLOP, all_in=all_in))
-            _get_player(player_list, name).street_nets['pre-flop'] -= amt
+            _get_player(player_list, name).street_nets['pre-flop'] = -amt
+        elif fields := _find_text(line[0], r'"(.*)" posts a straddle of ([\d\.]+)( and go all in)?', allow_fail=True):
+            name, amt, all_in = clean_pname(fields[0]), float(fields[1]), fields[2] is not None
+            hand.pre_flop_actions.append(actions.Action(name, amt, actions.STRADDLE, actions.PRE_FLOP, all_in=all_in))
+            _get_player(player_list, name).street_nets['pre-flop'] = -amt
         elif fields := _find_text(line[0], r'"(.*)" posts a miss(.*) of ([\d\.]+)( and go all in)?', allow_fail=True):
             # if you sit out during your blind(s) and then rejoin, it compels you to post a missing SB/BB.
             # note: a missing small blind is treated like an ante, whereas a missing bb is treated like a bet.
@@ -167,7 +182,7 @@ def _create_hand_from_lines(hero_id, log_downloader_id, configs, lines, alias_lo
             if "small blind" in bet_type:
                 _get_player(player_list, name).street_nets['ante'] -= amt
             elif "big blind" in bet_type:
-                _get_player(player_list, name).street_nets['pre-flop'] -= amt
+                _get_player(player_list, name).street_nets['pre-flop'] = -amt
             else:
                 raise ValueError(f"Unrecognized missing bet type: {bet_type} (value={amt})")
         elif fields := _find_text(line[0], r'"(.*)" calls ([\d\.]+)( and go all in)?', allow_fail=True):
@@ -308,6 +323,28 @@ def _handle_player_shows_a_card(player_list, name, shows, voluntary=False):
                 player.voluntarily_showed_cards = 2
         elif cards[0] not in old_cards:
             raise ValueError(f"Player's current cards are {old_cards} and showed {cards}?")
+
+
+def _get_pid_switches(lines) -> typing.Dict[str, str]:
+    # deals with lines like: "The player ""Nick @ pvi7lGaAqX"" changed the ID from -MJHz7DZc1 to pvi7lGaAqX
+    # because authenticated login."
+    switches = {}
+    for line in lines:
+        fields = _find_text(line[0], r'The player "(.*)" changed the ID from (.*) to (.*) because.*', allow_fail=True)
+        if fields is not None:
+            pid, old_id, new_id = fields
+
+            if old_id in switches.values():
+                # same player switched IDs multiple time in same hand...?
+                ks_to_remap = []
+                for k, v in switches:
+                    if v == old_id:
+                        ks_to_remap.append(k)
+                for k in ks_to_remap:
+                    switches[k] = new_id
+
+            switches[old_id] = new_id
+    return switches
 
 
 def _convert_card(c: str):
